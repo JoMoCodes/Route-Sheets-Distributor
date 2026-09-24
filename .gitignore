@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+*.log
+.DS_Store
+Thumbs.db
+# Never commit real associate or route data
+*.xlsx
+AssociateData*.csv
+Routes_*.csv
+*.eml
