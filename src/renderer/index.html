@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' about:;">
+  <title>Route Sheet Distributor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">RS</div>
+      <div>
+        <div class="brand-name">Route Sheet</div>
+        <div class="brand-sub">Distributor</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+    <div class="sidebar-foot">
+      <div id="updateBox" class="update-box"></div>
+      <button class="ghost small" id="themeToggle" type="button"></button>
+      <button class="ghost small" id="dataFolder" type="button">Open data folder</button>
+    </div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <div>
+        <div class="eyebrow">Current run</div>
+        <h1 id="runLabel"></h1>
+      </div>
+      <div class="topbar-actions" id="topActions"></div>
+    </header>
+    <section id="view"></section>
+  </main>
+  <div id="dropOverlay" class="drop-overlay" hidden><div>Drop the route sheet PDF, Routes file, or Associate Data here</div></div>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

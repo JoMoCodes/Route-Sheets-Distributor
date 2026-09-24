@@ -1,0 +1,66 @@
+{
+  "name": "route-sheet-distributor",
+  "productName": "Route Sheet Distributor",
+  "version": "1.0.0",
+  "description": "Match route sheet PDFs to drivers by Transporter ID, resolve duplicates, and send email-ready route sheets.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --win nsis portable --publish never",
+    "dist:dir": "electron-builder --win dir"
+  },
+  "build": {
+    "appId": "com.routesheets.distributor",
+    "productName": "Route Sheet Distributor",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/pdfjs-dist/**/*"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "artifactName": "${productName}-${version}-${arch}-${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JoMoCodes",
+        "repo": "Route-Sheets-Distributor",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9",
+    "papaparse": "^5.7.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
+    "read-excel-file": "^9.3.10"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "author": "JoMoCodes",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/JoMoCodes/Route-Sheets-Distributor.git"
+  }
+}
