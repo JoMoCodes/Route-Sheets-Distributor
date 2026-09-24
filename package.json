@@ -27,16 +27,16 @@
       "node_modules/pdfjs-dist/**/*"
     ],
     "win": {
-      "icon": "build/icon.png",
-      "artifactName": "${productName}-${version}-${arch}-${target}.${ext}"
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true
+      "createDesktopShortcut": true,
+      "artifactName": "Route-Sheet-Distributor-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName}-${version}-portable.exe"
+      "artifactName": "Route-Sheet-Distributor-${version}-portable.${ext}"
     },
     "publish": [
       {

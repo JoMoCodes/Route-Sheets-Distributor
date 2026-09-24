@@ -6,8 +6,8 @@ Anything that can't be matched exactly is never sent silently. The app shows you
 
 ## Install (Windows)
 
-1. Open the repo's **Releases** page and download the latest `…-nsis.exe` installer. Before the first release is published, use the **Actions** tab → **Build Windows app** → latest run → **Route-Sheet-Distributor-Windows** artifact instead.
-2. Run `Route Sheet Distributor-1.0.0-x64-nsis.exe` to install it, or `Route Sheet Distributor-1.0.0-portable.exe` to run it without installing.
+1. Open the repo's **Releases** page and download the latest `Route-Sheet-Distributor-Setup-<version>.exe` installer. Before the first release is published, use the **Actions** tab → **Build Windows app** → latest run → **Route-Sheet-Distributor-Windows** artifact instead.
+2. Run `Route-Sheet-Distributor-Setup-1.0.0.exe` to install it, or `Route-Sheet-Distributor-1.0.0-portable.exe` to run it without installing.
 
 The build isn't code-signed, so Windows SmartScreen may warn the first time. Choose **More info → Run anyway**.
 
