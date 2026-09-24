@@ -20,15 +20,11 @@ The installed app checks GitHub Releases when it starts and every 4 hours after 
 
 ### Publishing an update
 
-1. Change `"version"` in `package.json` (for example `1.0.0` → `1.0.1`) and commit it to `main`.
-2. Tag that commit with the same version and push the tag:
-   ```bash
-   git tag v1.0.1
-   git push origin v1.0.1
-   ```
-3. The **Build Windows app** workflow tests the app, builds it, and publishes the **v1.0.1** release. Installed copies pick it up on their next check.
+1. Change `"version"` in `package.json` (for example `1.0.0` → `1.0.1`).
+2. Commit and push it to `main`.
+3. The **Build Windows app** workflow tests and builds the app, then publishes the **v1.0.1** release and its tag. Installed copies pick it up on their next check.
 
-The workflow refuses to publish if the tag doesn't match the `package.json` version.
+Pushes to `main` that don't change the version are built and tested but not released. Pushing a `v*` tag also publishes, as long as it matches the `package.json` version.
 
 ## Daily use
 

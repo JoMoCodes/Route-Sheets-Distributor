@@ -1,8 +1,8 @@
 name: Build Windows app
 
 # Every push builds and tests the app and uploads the .exe files as a workflow artifact.
-# Pushing a version tag (e.g. v1.0.1) also publishes a GitHub Release, which installed
-# copies of the app pick up automatically as an update.
+# A push to main whose package.json version has no GitHub Release yet (or a pushed v* tag)
+# also publishes that release, which installed copies of the app pick up as an update.
 
 on:
   push:
@@ -31,18 +31,32 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Check tag matches package.json version
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Decide whether to publish a release
+        id: release
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pkg="v$(node -p "require('./package.json').version")"
-          if [ "$pkg" != "${GITHUB_REF_NAME}" ]; then
-            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version $pkg. Bump the version before tagging."
-            exit 1
+          tag="v$(node -p "require('./package.json').version")"
+          publish=never
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [ "$tag" != "$GITHUB_REF_NAME" ]; then
+              echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $tag. Bump the version first."
+              exit 1
+            fi
+            publish=always
+          elif [ "$GITHUB_REF" == "refs/heads/main" ] && [ "$GITHUB_EVENT_NAME" == "push" ]; then
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release $tag already exists; building without publishing. Bump the version in package.json to release."
+            else
+              echo "Publishing new release $tag"
+              publish=always
+            fi
           fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
       - name: Build installer and portable .exe
-        run: npx electron-builder --win nsis portable --publish ${{ startsWith(github.ref, 'refs/tags/v') && 'always' || 'never' }}
+        run: npx electron-builder --win nsis portable --publish ${{ steps.release.outputs.publish }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
