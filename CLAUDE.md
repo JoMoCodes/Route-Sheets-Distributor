@@ -1,6 +1,6 @@
 # Notes for Claude
 
-## Write summaries like you're explaining to a five-year-old (ELI5)
+## Write summaries like you're explaining to a five-year-old
 
 The people who read this repo's pull requests and the app's Features log are not
 programmers. Anything written for them must be in plain, everyday words:
@@ -21,5 +21,7 @@ How to write them:
 - If something is technical but matters, explain what it means in real life
   ("If the folder is on a USB stick that's unplugged, the app saves to its usual
   folder instead").
+- Keep headings and titles short and plain, with no descriptions in brackets.
+  Good: "What changed". Bad: "What changed (in plain words)".
 - Use the PR template's sections. A short "For whoever maintains the app"
   section at the end may use technical words, but only there.
