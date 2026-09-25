@@ -60,6 +60,7 @@
     "electron-builder": "^26.15.3"
   },
   "author": "JoMoCodes",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/JoMoCodes/Route-Sheets-Distributor.git"
