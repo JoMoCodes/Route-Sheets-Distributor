@@ -86,6 +86,14 @@ Once your Associate Data is over a month old, the **Associate Data** box on the 
 
 To see what changed in each version of the app, open **Features log** in the left menu.
 
+### Help and easier reading
+
+Open **How to use** in the left menu for step-by-step help, what the colors mean, and what to do when something goes wrong.
+
+Hard to read? Click **A+** at the bottom-left to make the text bigger (or hold **Ctrl** and press **+**). On **How to use** you can also switch to **Light** colors or turn on **High contrast**. The app remembers your choice.
+
+Still stuck? [Ask a question](https://github.com/JoMoCodes/Route-Sheets-Distributor/discussions/categories/q-a) on the app's help forum.
+
 ---
 
 ## How it makes sure nothing is wrong
@@ -147,7 +155,8 @@ npm run dist       # build the Windows installer (run this on Windows)
 | `src/core/emailRender.js`, `src/core/exporter.js` | Builds the email, Outlook drafts and single-page PDFs |
 | `src/core/mailer.js` | Sends emails through Gmail (or any SMTP server) |
 | `src/core/service.js`, `src/core/store.js` | Saves each day's work and your choices |
-| `src/renderer/` | The screens you click on |
+| `src/core/display.js` | Text size and contrast choices |
+| `src/renderer/` | The screens you click on (the **How to use** page text is in `app.js`) |
 
 **Never commit real driver or route files.** `.gitignore` already blocks the usual export file names.
 
