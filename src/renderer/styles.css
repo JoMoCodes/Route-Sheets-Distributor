@@ -115,6 +115,10 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .import-card .detail { font-size: 13px; }
 .import-card.stale { border-color: color-mix(in srgb, var(--amber) 55%, var(--border)); }
 .import-card .stale-note { font-size: 13px; color: var(--amber); }
+.import-card .title-text { display: flex; align-items: center; gap: 8px; }
+.import-card .card-actions { margin-top: auto; }
+.help-btn { width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--border); background: none; color: var(--muted); font-size: 12px; font-weight: 700; line-height: 1; cursor: pointer; }
+.help-btn:hover, .help-btn:focus-visible { color: var(--accent); border-color: var(--accent); }
 .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 16px; }
 .stat { padding: 14px 16px; border-left: 4px solid var(--border); }
 .stat .n { font-size: 28px; font-weight: 700; line-height: 1.1; }
@@ -213,6 +217,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .modal-backdrop[hidden] { display: none; }
 .modal { width: min(520px, 100%); max-height: calc(100vh - 48px); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
 .modal-body { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.help-modal { width: min(640px, 100%); }
+.help-modal a { color: var(--accent); }
+.help-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 14px; }
+.help-shot { display: block; max-width: 100%; margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; }
 .release ul { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 
 /* Features log */
