@@ -265,12 +265,12 @@ function importCards() {
   const multi = S.distribution.routes.filter((r) => r.listed.length > 1).length;
   const stale = associatesStale();
   const card = (title, ok, file, detail, warnings, kind, old = false) => h('div', { class: `panel import-card ${old ? 'stale' : ''}` },
-    h('div', { class: 'title' }, title, old ? badge('Over a month old', 'amber') : ok ? badge('Loaded', 'green') : badge('Not loaded', 'gray')),
+    h('div', { class: 'title' }, h('span', { class: 'title-text' }, title, helpButton(kind, title)), old ? badge('Over a month old', 'amber') : ok ? badge('Loaded', 'green') : badge('Not loaded', 'gray')),
     h('div', { class: 'file' }, file || 'No file yet'),
     detail ? h('div', { class: 'detail' }, detail) : null,
     old ? h('div', { class: 'stale-note' }, `Last imported ${plural(daysSince(a.importedAt), 'day')} ago. Import the latest Associate Data so new drivers, status changes and email addresses are up to date.`) : null,
     warnings && warnings.length ? h('ul', { class: 'issues' }, warnings.map((w) => h('li', { class: 'warn' }, w))) : null,
-    h('div', {}, h('button', { class: ok && !old ? 'btn small' : 'btn primary small', onclick: () => doImport(kind) }, old ? 'Import new…' : ok ? 'Replace…' : 'Import…')));
+    h('div', { class: 'card-actions' }, h('button', { class: ok && !old ? 'btn small' : 'btn primary small', onclick: () => doImport(kind) }, old ? 'Import new…' : ok ? 'Replace…' : 'Import…')));
 
   return h('div', {},
     h('div', { class: 'grid imports' },
@@ -283,6 +283,42 @@ function importCards() {
       card('Routes File', !!rf, rf && `${rf.fileName} · ${fmtDateTime(rf.importedAt)}`,
         rf && `${S.distribution.routes.filter((r) => r.onRoutesFile).length} routes${multi ? ` · ${multi} with more than one Transporter ID` : ''}`, rf && rf.warnings, 'routes')),
     h('p', { class: 'faint', style: 'margin:8px 2px 0;font-size:12.5px' }, 'Tip: drag and drop the files onto this window.'));
+}
+
+// Where to download each file. Each step is text or a mix of text and { text, href } links, with an
+// optional screenshot (from renderer/help) showing what to click.
+const CORTEX = { text: 'Cortex', href: 'https://logistics.amazon.com/dspconsolev2' };
+const IMPORT_HELP = {
+  associates: [
+    { text: ['Go to ', CORTEX, '.'] },
+    { text: 'Open the Administration menu at the top and click Associates.', img: 'cortex-administration-menu.png' },
+    { text: 'Click the My associates tab, then click the download button on the right.', img: 'cortex-my-associates-tab.png' },
+    { text: 'Import the downloaded file here.' },
+  ],
+  routes: [
+    { text: ['Go to ', CORTEX, '.'] },
+    { text: 'Open the Operations menu at the top and click Delivery.', img: 'cortex-operations-menu.png' },
+    { text: 'Stay on the Routes tab and click the download button on the right.', img: 'cortex-routes-tab.png' },
+    { text: 'Import the downloaded file here.' },
+  ],
+  pdf: [
+    { text: ['Go to ', { text: 'Slack', href: 'https://slack.com/' }, '.'] },
+    { text: 'Navigate to your "escalations" chatroom and download the PDF for your Route Sheets.', img: 'slack-download-pdf.png' },
+  ],
+};
+
+const helpButton = (kind, title) => h('button', { class: 'help-btn', type: 'button', title: `Where do I get the ${title}?`, 'aria-label': `Where do I get the ${title}?`, onclick: () => showImportHelp(kind, title) }, '?');
+
+function showImportHelp(kind, title) {
+  const part = (p) => (typeof p === 'string' ? p : h('a', { href: p.href, target: '_blank', rel: 'noopener' }, p.text));
+  showModal(h('div', { class: 'modal panel help-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'importHelpTitle' },
+    h('h2', { id: 'importHelpTitle' }, `Where to get the ${title}`),
+    h('div', { class: 'modal-body' }, h('ol', { class: 'help-steps' }, IMPORT_HELP[kind].map((step) => h('li', {},
+      h('div', {}, [].concat(step.text).map(part)),
+      step.img ? h('img', { class: 'help-shot', src: `help/${step.img}`, alt: '' }) : null)))),
+    h('div', { class: 'toolbar', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => { closeModal(); doImport(kind); } }, 'Import…'),
+      h('button', { class: 'btn primary', onclick: closeModal }, 'Got it'))));
 }
 
 async function doImport(kind) {
