@@ -11,9 +11,9 @@
 1. **Download the app.** Go to the [latest release](https://github.com/JoMoCodes/Route-Sheets-Distributor/releases/latest). Under **Assets**, click the file whose name starts with `Route-Sheet-Distributor-Setup` and ends in `.exe`.
 2. **Open the file you downloaded.** You'll usually find it in your **Downloads** folder.
 3. **If Windows shows a blue "Windows protected your PC" box,** click **More info**, then **Run anyway**. This appears because the app isn't registered with Microsoft (that costs money), not because anything is wrong.
-4. **Follow the installer.** Keep the default choices and click **Next** / **Install**, then **Finish**. You'll get a **Route Sheet Distributor** shortcut on your desktop and in the Start menu.
+4. **Follow the installer.** Keep the default choices and click **Next** / **Install**, then **Finish**. On the **Shortcuts** step, leave **Create a desktop shortcut** ticked if you want one on your desktop (untick it if not). The app is always added to the Start menu.
 
-That's it. From now on the app **updates itself**: when a new version is out, a green **Restart to update** button appears at the bottom-left of the app.
+That's it. From now on the app **updates itself**: when a new version is out, a green **Restart to update** button appears at the bottom-left of the app. Click it and the update installs quietly in the background (no setup screens), keeping your shortcuts and data, and the app opens again by itself.
 
 > **Can't install programs on this computer?** On the same release page, download the file ending in `-portable.exe` instead. Double-click it and the app runs straight away, with no installing. It won't update itself, though, so you'll need to download the newest one yourself now and then.
 
@@ -112,7 +112,8 @@ Everything stays **on your computer**, in `%APPDATA%\Route Sheet Distributor\dat
 ### Releasing a new version
 
 1. Open `package.json` and bump `"version"` (for example `1.0.0` → `1.0.1`).
-2. Commit and push to `main`.
+2. Add a short entry for that version at the top of `src/core/releaseNotes.js`, in plain words. People see it in the **What's new** window the first time they open the updated app. (The tests fail if you forget.)
+3. Commit and push to `main`.
 
 GitHub then tests the app, builds it, and publishes the new release by itself. Everyone's installed app picks it up within a few hours, or the next time they open it.
 

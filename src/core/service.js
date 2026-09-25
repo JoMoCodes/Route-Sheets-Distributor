@@ -9,6 +9,7 @@ const { distribute, STATES } = require('./matcher');
 const { buildRouteEmail, extractPages, safeFileName } = require('./exporter');
 const { renderEmailHtml, subjectFor, esc } = require('./emailRender');
 const mailer = require('./mailer');
+const { compareVersions, notesBetween } = require('./releaseNotes');
 
 const DRAFT_ID = 'draft';
 
@@ -253,6 +254,26 @@ class Service {
     const pdf = this.store.readRunPdf(this.run.id);
     if (!sheet || !pdf) throw new Error('The original route sheet PDF for this run is not available.');
     return extractPages(pdf, [sheet.pageNumber]);
+  }
+
+  // ---------- what's new ----------
+
+  /**
+   * Release notes to show once, the first time a new version opens. A fresh install shows none.
+   * Versions before 1.1.1 didn't record which version was last opened, so saved data with no
+   * record means this is an update from one of those, and everything after 1.0.0 is new.
+   */
+  whatsNewOnStart(appVersion) {
+    const settings = this.store.getSettings();
+    const seen = settings.lastSeenVersion;
+    let notes = [];
+    if (seen) {
+      if (compareVersions(appVersion, seen) > 0) notes = notesBetween(seen, appVersion);
+    } else if (Object.keys(settings).length || this.store.getAssociates() || this.store.listRuns().length) {
+      notes = notesBetween('1.0.0', appVersion);
+    }
+    if (seen !== appVersion) this.store.setSettings({ lastSeenVersion: appVersion });
+    return notes;
   }
 
   // ---------- sending email ----------

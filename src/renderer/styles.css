@@ -204,6 +204,13 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .toast.ok { border-color: var(--green); }
 .toast ul { margin: 6px 0 0; padding-left: 18px; color: var(--muted); }
 
+/* What's new */
+.modal-backdrop { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
+.modal-backdrop[hidden] { display: none; }
+.modal { width: min(520px, 100%); max-height: calc(100vh - 48px); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
+.modal-body { overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.release ul { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+
 /* Email settings */
 .email-grid { display: grid; grid-template-columns: minmax(0, 620px) minmax(260px, 360px); gap: 20px; align-items: start; }
 .form { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
