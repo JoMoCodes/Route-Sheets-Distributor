@@ -6,6 +6,15 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.3.0',
+    items: [
+      'New "How to use" page in the left menu. It walks you through each day step by step, explains the colors, and lists what to do when something goes wrong.',
+      'Make the text bigger with the A+ button at the bottom-left, or hold Ctrl and press +. The app remembers your size.',
+      'On How to use you can also turn on High contrast, which makes gray text darker and easier to read.',
+      'Still stuck? The How to use page has an "Ask a question" button that opens the app\'s help forum.',
+    ],
+  },
+  {
     version: '1.2.1',
     items: [
       'Each box on the Distribute page now has a "?" button. Click it to see where to download that file, with pictures.',
