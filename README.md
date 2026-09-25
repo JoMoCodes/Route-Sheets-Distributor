@@ -27,6 +27,18 @@ Click **Import…** on the **Associate Data** box and pick your Associate Data `
 
 The app remembers it. You only do this again when your list changes, like when someone new starts or you add email addresses.
 
+### Set up email (only once, optional)
+
+To send route sheets straight from the app, open **Email settings** (left menu) and enter:
+
+- **Gmail address to send from:** the Gmail account the emails come from.
+- **App Password:** a special 16-letter password from Google, not your normal one. To get it: sign in to that Gmail account, turn on **2-Step Verification** (Google Account → Security), then open [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), type a name like "Route Sheets", and click **Create**. If you already made one for the Weekly Performance App, you can use that same one.
+- **Send me a copy (optional):** every route sheet email is also BCC'd here.
+
+Click **Save**, then **Send test email** to check it works. The password is encrypted and only works for your Windows account on this computer. Gmail allows about 500 emails a day.
+
+You can skip this: the copy and draft buttons below work without it.
+
 ### Step 2: Give it today's files
 
 - On the **Route Sheet PDF** box, click **Import…** and pick today's route sheet PDF.
@@ -53,15 +65,16 @@ Open the **Route Sheets** page and click a route on the left. You'll see exactly
 
 | Button | What it does |
 |---|---|
+| **Send email** | Sends the sheet to the driver right away, with the original PDF page attached. Needs email set up (see above). |
 | **Copy for email** | Copies the sheet. Paste it into any email (Ctrl+V) and the table keeps its layout. |
 | **Open email draft** | Opens a ready-to-send Outlook email with the driver's address, a subject, the sheet, and the original PDF page attached. |
 | **Copy + open mail app** | Copies the sheet and opens your normal email app with the address and subject filled in. Paste the sheet into the body. |
 | **Save PDF page** | Saves just this route's page from the original PDF. |
 | **View original page** | Opens this route's page from the original PDF so you can double-check it. |
 
-After you copy or open a draft, the route gets a ✓ so you can see what you've done. You can also click **Mark as sent**.
+After you send, copy or open a draft, the route gets a ✓ so you can see what you've done. You can also click **Mark as sent**.
 
-**Doing them all at once:** **Export all** (top right) saves an email draft and a PDF for every route that's ready, plus a summary report, into a folder you choose.
+**Doing them all at once:** **Email all** (top right) emails every ready route sheet that isn't marked as sent yet, each driver getting their own email. It asks you first, and at the end tells you anything that couldn't be sent and why. Routes with no email address on file are left out. **Export all** saves an email draft and a PDF for every route that's ready, plus a summary report, into a folder you choose.
 
 ### Coming back later
 
@@ -90,7 +103,7 @@ If any of these fail, the route waits for you, with the reason shown.
 
 ## Where your data lives
 
-Everything stays **on your computer**, in `%APPDATA%\Route Sheet Distributor\data`. Click **Open data folder** in the app to see it. Nothing is uploaded anywhere.
+Everything stays **on your computer**, in `%APPDATA%\Route Sheet Distributor\data`. Click **Open data folder** in the app to see it. Nothing is uploaded anywhere, except the route sheet emails you choose to send through your Gmail account.
 
 ---
 
@@ -123,6 +136,7 @@ npm run dist       # build the Windows installer (run this on Windows)
 | `src/core/tableParsers.js` | Reads the Associate Data and Routes files |
 | `src/core/matcher.js` | Decides who gets each sheet, and explains why not |
 | `src/core/emailRender.js`, `src/core/exporter.js` | Builds the email, Outlook drafts and single-page PDFs |
+| `src/core/mailer.js` | Sends emails through Gmail (or any SMTP server) |
 | `src/core/service.js`, `src/core/store.js` | Saves each day's work and your choices |
 | `src/renderer/` | The screens you click on |
 
