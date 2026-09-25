@@ -8,6 +8,7 @@ const { Store } = require('./core/store');
 const { Service } = require('./core/service');
 const { safeFileName } = require('./core/exporter');
 const { notesBetween } = require('./core/releaseNotes');
+const { TEXT_SIZES, normalizeDisplay, zoomFor, stepTextSize } = require('./core/display');
 const updater = require('./updater');
 
 let win;
@@ -40,6 +41,33 @@ function createWindow() {
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (e) => e.preventDefault());
+  // Keep the saved text size across reloads, and turn Ctrl + / Ctrl - / Ctrl 0 and Ctrl + mouse
+  // wheel into the same text size steps the app shows, so the choice is remembered.
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(zoomFor(display().textSize)));
+  win.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown' || !(input.control || input.meta) || input.alt) return;
+    const step = { '=': 1, '+': 1, '-': -1, _: -1, 0: 0 }[input.key];
+    if (step === undefined) return;
+    e.preventDefault();
+    setDisplay({ textSize: step === 0 ? 'normal' : stepTextSize(display().textSize, step) });
+  });
+  win.webContents.on('zoom-changed', (_e, direction) => {
+    setDisplay({ textSize: stepTextSize(display().textSize, direction === 'in' ? 1 : -1) });
+  });
+}
+
+const display = () => normalizeDisplay(store.getSettings());
+
+/** Saves text size / contrast / theme, applies it, and tells the app window. */
+function setDisplay(patch) {
+  const next = normalizeDisplay({ ...display(), ...patch });
+  store.setSettings(next);
+  nativeTheme.themeSource = next.theme;
+  if (win && !win.isDestroyed()) {
+    win.webContents.setZoomFactor(zoomFor(next.textSize));
+    win.webContents.send('display-changed', next);
+  }
+  return next;
 }
 
 const tmpDir = () => {
@@ -207,6 +235,8 @@ function registerIpc() {
     return theme;
   });
   handle('getTheme', () => store.getSettings().theme || 'dark');
+  handle('display', () => ({ ...display(), textSizes: TEXT_SIZES }));
+  handle('setDisplay', (patch) => setDisplay(patch));
   handle('openDataFolder', () => shell.openPath(store.dir));
   handle('openOutputFolder', async () => {
     const err = await shell.openPath(store.runsDir);

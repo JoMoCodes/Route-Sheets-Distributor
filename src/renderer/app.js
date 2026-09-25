@@ -22,7 +22,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------- state ----------
 let S = null;
-const ui = { view: 'distribute', selected: null, sheetFilter: '', assocFilter: '', previewSeq: 0, sending: null, testing: false, emailSettings: null, emailDraft: null, releaseNotes: [], staleWarned: false };
+const ui = { view: 'distribute', selected: null, sheetFilter: '', assocFilter: '', previewSeq: 0, sending: null, testing: false, emailSettings: null, emailDraft: null, releaseNotes: [], staleWarned: false, display: { theme: 'dark', textSize: 'normal', contrast: 'normal', textSizes: [] } };
 
 const STATE_INFO = {
   ready: { label: 'Ready to send', tone: 'green' },
@@ -71,7 +71,7 @@ function render() {
   view.className = ui.view === 'sheets' ? 'flush' : '';
   const scroll = view.scrollTop;
   view.replaceChildren(
-    { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory, email: viewEmail, features: viewFeatures }[ui.view](),
+    { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory, email: viewEmail, features: viewFeatures, help: viewHelp }[ui.view](),
   );
   if (ui.view !== 'sheets') view.scrollTop = scroll;
 }
@@ -93,6 +93,7 @@ function renderNav() {
     ['history', 'History', S.runs.length || null, ''],
     ['email', 'Email settings', S.email.problem ? 'Set up' : null, 'warn'],
     ['features', 'Features log', null, ''],
+    ['help', 'How to use', null, ''],
   ];
   $('nav').replaceChildren(...items.map(([id, label, count, tone]) =>
     h('button', { class: `nav-item ${ui.view === id ? 'active' : ''}`, onclick: () => (id === 'email' ? openEmailSettings() : go(id)) },
@@ -172,7 +173,8 @@ function viewDistribute() {
       h('h2', {}, 'Start a run'),
       h('p', {}, '1. Import the Associate Data CSV (only needed when your roster changes).'),
       h('p', {}, '2. Import the route sheet PDF and the Routes export (.xlsx) for the day.'),
-      h('p', { class: 'faint' }, 'You can also drag all the files onto this window at once.')));
+      h('p', { class: 'faint' }, 'You can also drag all the files onto this window at once.'),
+      h('p', {}, 'New here? ', h('button', { class: 'link', onclick: () => go('help') }, 'Read How to use'), ' for step-by-step help.')));
     return root;
   }
 
@@ -598,6 +600,202 @@ function viewFeatures() {
       : h('div', { class: 'panel empty' }, 'No changes to show.'));
 }
 
+// ---------- How to use ----------
+// Text parts: a string, { b } for bold, { href, text } for a web link, or { go, text } for a link to
+// another page of the app. Keep this plain and short: people read it while they work (see CLAUDE.md).
+const REPO_URL = 'https://github.com/JoMoCodes/Route-Sheets-Distributor';
+const QA_URL = `${REPO_URL}/discussions/categories/q-a`;
+const DISCUSSIONS_URL = `${REPO_URL}/discussions`;
+
+const HELP = {
+  firstTime: [
+    ['Open ', { go: 'distribute', text: 'Distribute' }, ' in the left menu.'],
+    ['On the ', { b: 'Associate Data' }, ' box, click ', { b: 'Import…' }, ' and pick your driver list. Click the ', { b: '?' }, ' on the box to see where to download it.'],
+    ['Want to email sheets straight from the app? Open ', { go: 'email', text: 'Email settings' }, ' and follow the steps on the right of that page.'],
+    ['Click ', { b: 'Send test email' }, ' to check it works. Look in your inbox (and spam folder).'],
+    ['You only do this once. Import the driver list again when someone new starts or an email changes.'],
+  ],
+  everyDay: [
+    ['Download today\'s ', { b: 'route sheet PDF' }, ' (from Slack) and ', { b: 'Routes file' }, ' (from Cortex). The ', { b: '?' }, ' on each box shows you where.'],
+    ['Open ', { go: 'distribute', text: 'Distribute' }, '. Click ', { b: 'Import…' }, ' on ', { b: 'Route Sheet PDF' }, ' and pick the PDF.'],
+    ['Click ', { b: 'Import…' }, ' on ', { b: 'Routes File' }, ' and pick the Routes file. (Or drag both files onto the window at once.)'],
+    ['Look at the colored boxes at the top. Green is good. Yellow and red need you.'],
+    ['Go down the page and make a choice for every yellow and red route. See ', { b: 'Making choices' }, ' below.'],
+    ['Check ', { b: 'People who won\'t get a route sheet' }, '. Make sure nobody is left out by mistake.'],
+    ['Click ', { b: 'Email all' }, ' at the top right to send every ready sheet. Or open ', { go: 'sheets', text: 'Route Sheets' }, ' and send them one at a time.'],
+    ['That\'s it. The app saves your work by itself.'],
+  ],
+  colors: [
+    [{ badge: 'Ready to send', tone: 'green' }, ' The app found exactly one driver. Nothing to do.'],
+    [{ badge: 'Needs your decision', tone: 'amber' }, ' More than one driver is listed for this route. Pick who gets it.'],
+    [{ badge: 'No exact match', tone: 'red' }, ' The app couldn\'t find the right driver. Pick someone, or don\'t send it.'],
+    [{ badge: 'No route sheet', tone: 'red' }, ' The route is on the Routes file, but there\'s no page for it in the PDF.'],
+    [{ badge: 'Not sending', tone: 'gray' }, ' You chose not to send it.'],
+    [{ badge: '✓ Emailed', tone: 'blue' }, ' You already sent, copied or opened this one.'],
+  ],
+  choices: [
+    [{ b: 'Send to [name]' }, ': that person gets the route sheet.'],
+    [{ b: '★ Suggested' }, ': the app\'s best guess. ', { b: 'Accept all suggestions' }, ' picks every guess in one click.'],
+    [{ b: 'Send anyway' }, ': the person is on your list but not marked ACTIVE. Only use it if you\'re sure.'],
+    [{ b: 'Send to someone else' }, ' or ', { b: 'Assign' }, ': pick anyone from the drop-down list, then click ', { b: 'Assign' }, '.'],
+    [{ b: 'Don\'t send' }, ': skip this route today.'],
+    ['Changed your mind? In ', { b: 'All routes' }, ' at the bottom of Distribute, click ', { b: 'Change' }, ' next to the route.'],
+  ],
+  sending: [
+    [{ b: 'Send email' }, ': sends it to the driver right now, with the PDF page attached. Needs Email settings.'],
+    [{ b: 'Copy for email' }, ': copies the sheet. Paste it into any email with Ctrl + V.'],
+    [{ b: 'Open email draft' }, ': opens a ready-to-go email in Outlook. You just click Send.'],
+    [{ b: 'Copy + open mail app' }, ': copies the sheet and opens your email app. Paste it in.'],
+    [{ b: 'Save PDF page' }, ': saves only this driver\'s page as a PDF.'],
+    [{ b: 'View original page' }, ': shows the page from the original PDF, to double-check.'],
+    [{ b: 'Mark as sent' }, ': puts a ✓ on it if you sent it some other way, like a text message.'],
+  ],
+  problems: [
+    {
+      q: 'Nothing is ready to send, or everything is red',
+      a: [
+        ['Check the ', { b: 'Associate Data' }, ' box on Distribute says ', { b: 'Loaded' }, '. If not, import it.'],
+        ['If it says ', { b: 'Over a month old' }, ', download a fresh one from Cortex and import it.'],
+        ['Make sure you picked today\'s files, not yesterday\'s.'],
+      ],
+    },
+    {
+      q: 'A driver shows "Not in associate data" or "INACTIVE"',
+      a: [
+        ['They\'re probably new, or their status changed. Download a fresh Associate Data from Cortex and import it.'],
+        ['Still wrong? In Cortex, check they are Active and their Transporter ID is right.'],
+        ['Need to send it today anyway? Use ', { b: 'Send anyway' }, ' or pick them with ', { b: 'Assign' }, '.'],
+      ],
+    },
+    {
+      q: 'A driver has "No email on file"',
+      a: [
+        ['Add their email in Cortex. Then download and import the Associate Data again.'],
+        ['For today, use ', { b: 'Copy for email' }, ' and send it yourself, then click ', { b: 'Mark as sent' }, '.'],
+      ],
+    },
+    {
+      q: 'A route is "Missing from the PDF"',
+      a: [
+        ['The PDF has no page for that route. Download the PDF again, or ask for the missing page.'],
+        ['Import the new PDF. Your choices so far are kept.'],
+      ],
+    },
+    {
+      q: 'A sheet "failed the number check"',
+      a: [
+        ['The bags and packages on that page don\'t add up, so the app won\'t send it on its own.'],
+        ['Click ', { b: 'View original page' }, ' and compare. The PDF may be cut off. Download it again and re-import.'],
+      ],
+    },
+    {
+      q: 'Emails won\'t send',
+      a: [
+        ['Open ', { go: 'email', text: 'Email settings' }, '. A yellow box tells you what\'s missing.'],
+        ['Use a Gmail ', { b: 'App Password' }, ', not your normal Gmail password.'],
+        ['Click ', { b: 'Send test email' }, '. If it fails, make a new App Password and paste it in.'],
+        ['Check the computer is online.'],
+        ['Gmail only lets you send about 500 emails a day.'],
+      ],
+    },
+    {
+      q: 'I sent a sheet to the wrong person',
+      a: [
+        ['An email can\'t be unsent. Let that driver know to ignore it.'],
+        ['On Distribute, in ', { b: 'All routes' }, ', click ', { b: 'Change' }, ' and pick the right person. Then send it again.'],
+      ],
+    },
+    {
+      q: 'I imported the wrong file',
+      a: [
+        ['Just import the right one. It replaces the wrong one.'],
+        ['Or click ', { b: 'New run' }, ' at the top right to start over.'],
+      ],
+    },
+    {
+      q: 'I can\'t find yesterday\'s work',
+      a: [
+        ['Open ', { go: 'history', text: 'History' }, ' and click ', { b: 'Open' }, ' next to that day.'],
+        ['If you clicked ', { b: 'Clear' }, ' when the app asked about earlier runs, they\'re gone.'],
+      ],
+    },
+    {
+      q: 'Everything is too small or hard to read',
+      a: [['Use ', { b: 'Make the app easier to see' }, ' at the top of this page.']],
+    },
+  ],
+  asking: [
+    ['Say what you clicked, what you expected, and what happened instead.'],
+    ['Add a picture of the screen. Press the Windows key + Shift + S, drag over the screen, then paste it with Ctrl + V.'],
+    ['Say which version you have. It\'s at the bottom-left of the app (Version {v}).'],
+    [{ b: 'Never post driver names, emails, phone numbers or route sheets.' }, ' Anyone on the internet can see these pages.'],
+    ['You need a free GitHub account to post.'],
+  ],
+};
+
+function helpText(parts) {
+  return [].concat(parts).map((p) => {
+    if (typeof p === 'string') return p.replace('{v}', appVersion || '…');
+    if (p.b) return h('b', {}, p.b);
+    if (p.badge) return badge(p.badge, p.tone);
+    if (p.href) return h('a', { href: p.href, target: '_blank', rel: 'noopener' }, p.text);
+    if (p.go) return h('button', { class: 'link', onclick: () => (p.go === 'email' ? openEmailSettings() : go(p.go)) }, p.text);
+    return '';
+  });
+}
+
+const helpList = (items, ordered = false) => h(ordered ? 'ol' : 'ul', { class: 'help-list' }, items.map((i) => h('li', {}, helpText(i))));
+
+function viewHelp() {
+  const d = ui.display;
+  const choice = (label, current, options, key) => h('div', { class: 'display-row' },
+    h('div', { class: 'field-label' }, label),
+    h('div', { class: 'segmented', role: 'group', 'aria-label': label }, options.map(([id, text]) =>
+      h('button', { class: `btn ${current === id ? 'primary' : ''}`, 'aria-pressed': String(current === id), onclick: () => setDisplay({ [key]: id }) }, text))));
+
+  const sections = [
+    ['see', 'Make the app easier to see', h('div', { class: 'panel help-card' },
+      choice('Text size', d.textSize, d.textSizes.map((t) => [t.id, t.label]), 'textSize'),
+      choice('Colors', d.theme, [['dark', 'Dark'], ['light', 'Light']], 'theme'),
+      choice('Contrast', d.contrast, [['normal', 'Normal'], ['high', 'High contrast']], 'contrast'),
+      helpList([
+        ['Changes happen right away, and the app remembers them.'],
+        [{ b: 'High contrast' }, ' makes gray text and borders darker (or brighter in Dark), so they\'re easier to read.'],
+        [{ b: 'Light' }, ' colors are often easier to read in a bright room.'],
+        ['Shortcut: hold ', { b: 'Ctrl' }, ' and press ', { b: '+' }, ' to make everything bigger, or ', { b: '−' }, ' to make it smaller. ', { b: 'Ctrl' }, ' and ', { b: '0' }, ' goes back to normal.'],
+        ['You can also hold ', { b: 'Ctrl' }, ' and roll the mouse wheel.'],
+        ['The ', { b: 'A−' }, ' and ', { b: 'A+' }, ' buttons at the bottom-left work on every page.'],
+        ['Things look squished at a big size? Make the window fill the screen: double-click the bar at the very top of the window.'],
+      ]))],
+    ['first', 'Before your first day', h('div', { class: 'panel help-card' }, helpList(HELP.firstTime, true))],
+    ['daily', 'Every day, step by step', h('div', { class: 'panel help-card' }, helpList(HELP.everyDay, true))],
+    ['colors', 'What the colors mean', h('div', { class: 'panel help-card' }, helpList(HELP.colors))],
+    ['choices', 'Making choices', h('div', { class: 'panel help-card' },
+      h('p', { class: 'muted' }, 'These buttons are on the Distribute page, on each yellow or red route.'), helpList(HELP.choices))],
+    ['sending', 'Ways to send a route sheet', h('div', { class: 'panel help-card' },
+      h('p', { class: 'muted' }, 'Open Route Sheets and click a route on the left. You\'ll see exactly what the driver gets, and these buttons.'), helpList(HELP.sending))],
+    ['problems', 'If something goes wrong', h('div', { class: 'help-problems' }, HELP.problems.map((p) =>
+      h('details', { class: 'panel help-problem' }, h('summary', {}, p.q), helpList(p.a))))],
+    ['stuck', 'Still stuck?', h('div', { class: 'panel help-card' },
+      h('p', {}, 'Ask on the app\'s help forum. Someone will answer, and the answer stays there for the next person with the same problem.'),
+      h('div', { class: 'toolbar' },
+        h('a', { class: 'btn primary', href: QA_URL, target: '_blank', rel: 'noopener' }, 'Ask a question'),
+        h('a', { class: 'btn', href: DISCUSSIONS_URL, target: '_blank', rel: 'noopener' }, 'See all discussions')),
+      helpList([
+        [{ b: 'Ask a question' }, ' is for "how do I…" and "this isn\'t working". Search it first, your question may already be answered.'],
+        [{ b: 'See all discussions' }, ' is for ideas, tips and news about the app.'],
+      ]),
+      h('div', { class: 'field-label', style: 'margin-top:4px' }, 'When you ask, please:'),
+      helpList(HELP.asking))],
+  ];
+
+  return h('div', { class: 'help-view' },
+    h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'How to use'), h('p', {}, 'Everything you need to send route sheets, and what to do when something goes wrong.'))),
+    h('div', { class: 'help-jump' }, h('span', { class: 'muted' }, 'Jump to:'),
+      sections.map(([id, title]) => h('button', { class: 'btn small', onclick: () => $(`help-${id}`).scrollIntoView({ behavior: 'smooth', block: 'start' }) }, title))),
+    sections.map(([id, title, body]) => h('div', { class: 'section', id: `help-${id}` }, h('h2', { class: 'help-title' }, title), body)));
+}
+
 // ---------- Email settings ----------
 async function openEmailSettings() {
   const r = await api.emailSettings();
@@ -684,17 +882,41 @@ function viewEmail() {
         h('div', { class: 'faint', style: 'font-size:12.5px' }, 'The password is encrypted and only works for your Windows account on this computer. Gmail allows about 500 emails a day.'))));
 }
 
-// ---------- theme, drag & drop, boot ----------
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  $('themeToggle').textContent = theme === 'dark' ? '☀  Light mode' : '☾  Dark mode';
+// ---------- display (theme, text size, contrast), drag & drop, boot ----------
+function applyDisplay(d) {
+  ui.display = { ...ui.display, ...d };
+  document.documentElement.dataset.theme = ui.display.theme;
+  document.documentElement.dataset.contrast = ui.display.contrast;
+  $('themeToggle').textContent = ui.display.theme === 'dark' ? '☀  Light mode' : '☾  Dark mode';
+  renderTextSizeBox();
 }
 
-$('themeToggle').addEventListener('click', async () => {
-  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-  applyTheme(next);
-  await api.setTheme(next);
-});
+/** Saves a display change; the main process applies it and sends it back via onDisplayChanged. */
+async function setDisplay(patch) {
+  applyDisplay(patch);
+  const r = await api.setDisplay(patch);
+  if (r.ok) applyDisplay(r.result);
+  if (S && ui.view === 'help') render();
+}
+
+const textSizeIndex = () => Math.max(0, ui.display.textSizes.findIndex((t) => t.id === ui.display.textSize));
+function stepText(step) {
+  const sizes = ui.display.textSizes;
+  const next = sizes[Math.min(sizes.length - 1, Math.max(0, textSizeIndex() + step))];
+  if (next) setDisplay({ textSize: next.id });
+}
+
+function renderTextSizeBox() {
+  const sizes = ui.display.textSizes;
+  if (!sizes.length) return;
+  const i = textSizeIndex();
+  $('textSizeBox').replaceChildren(
+    h('button', { class: 'btn small', disabled: i === 0, title: 'Make the text smaller (Ctrl -)', 'aria-label': 'Make the text smaller', onclick: () => stepText(-1) }, 'A−'),
+    h('button', { class: 'link text-size-label', title: 'More ways to make the app easier to see', onclick: () => go('help') }, `Text: ${sizes[i].label}`),
+    h('button', { class: 'btn small', disabled: i === sizes.length - 1, title: 'Make the text bigger (Ctrl +)', 'aria-label': 'Make the text bigger', onclick: () => stepText(1) }, 'A+'));
+}
+
+$('themeToggle').addEventListener('click', () => setDisplay({ theme: ui.display.theme === 'dark' ? 'light' : 'dark' }));
 $('dataFolder').addEventListener('click', () => api.openDataFolder());
 
 let dragDepth = 0;
@@ -816,6 +1038,7 @@ setInterval(async () => {
 $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
 api.onUpdateStatus(renderUpdate);
+api.onDisplayChanged((d) => { applyDisplay(d); if (S && ui.view === 'help') render(); });
 api.onEmailProgress((p) => {
   ui.sending = p;
   if (S) renderTopActions();
@@ -824,8 +1047,8 @@ api.onEmailProgress((p) => {
 (async function boot() {
   const info = await api.appInfo();
   if (info.ok) { appVersion = info.result.version; renderUpdate(info.result.update); }
-  const theme = await api.getTheme();
-  applyTheme(theme.result || 'dark');
+  const display = await api.display();
+  applyDisplay(display.ok ? display.result : { theme: 'dark' });
   const r = await api.state();
   S = r.state;
   render();
