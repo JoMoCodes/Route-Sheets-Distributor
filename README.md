@@ -142,3 +142,7 @@ npm run dist       # build the Windows installer (run this on Windows)
 | `src/renderer/` | The screens you click on |
 
 **Never commit real driver or route files.** `.gitignore` already blocks the usual export file names.
+
+## License
+
+[MIT](LICENSE). You're free to use, copy and change the app. It comes with no warranty: you use it at your own risk.
