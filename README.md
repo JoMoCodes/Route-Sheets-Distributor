@@ -112,7 +112,8 @@ Everything stays **on your computer**, in `%APPDATA%\Route Sheet Distributor\dat
 ### Releasing a new version
 
 1. Open `package.json` and bump `"version"` (for example `1.0.0` → `1.0.1`).
-2. Commit and push to `main`.
+2. Add a short entry for that version at the top of `src/core/releaseNotes.js`, in plain words. People see it in the **What's new** window the first time they open the updated app. (The tests fail if you forget.)
+3. Commit and push to `main`.
 
 GitHub then tests the app, builds it, and publishes the new release by itself. Everyone's installed app picks it up within a few hours, or the next time they open it.
 
