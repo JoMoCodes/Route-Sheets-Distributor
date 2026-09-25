@@ -1,8 +1,19 @@
 'use strict';
-// "What's new" notes shown once after the app updates. Add an entry at the top for every
-// release, written for the person using the app (not for developers), newest first.
+// "What's new" notes shown once after the app updates and on the Features log page. Add an
+// entry at the top for every release, newest first. Write them ELI5-style for the person
+// using the app, not for developers: plain words, short sentences, no code or file names.
+// See CLAUDE.md.
 
 const RELEASE_NOTES = [
+  {
+    version: '1.2.0',
+    items: [
+      'New "Features log" page in the left menu. It shows what changed in every version, so you can look back any time.',
+      'Each new day, the app asks if you want to clear out the old days\' runs. Your driver list (Associate Data) and settings always stay.',
+      'If your driver list is over a month old, the Associate Data box turns yellow and reminds you to import a fresh one.',
+      'On the History page you can now open the folder where your runs are saved, or pick a new folder. Your old runs move to the new folder too.',
+    ],
+  },
   {
     version: '1.1.1',
     items: [

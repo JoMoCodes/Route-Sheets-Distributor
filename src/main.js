@@ -208,6 +208,23 @@ function registerIpc() {
   });
   handle('getTheme', () => store.getSettings().theme || 'dark');
   handle('openDataFolder', () => shell.openPath(store.dir));
+  handle('openOutputFolder', async () => {
+    const err = await shell.openPath(store.runsDir);
+    if (err) throw new Error(`Windows could not open the output folder: ${err}`);
+    return store.runsDir;
+  });
+  handle('changeOutputFolder', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Choose the output folder for saved runs',
+      defaultPath: store.runsDir,
+      buttonLabel: 'Use this folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return service.setOutputDir(r.filePaths[0]);
+  });
+  handle('newDayCheck', () => service.newDayCheck());
+  handle('clearPreviousRuns', () => service.clearPreviousRuns());
   handle('whatsNewOnStart', () => service.whatsNewOnStart(app.getVersion()));
   handle('releaseNotes', () => notesBetween('0.0.0', app.getVersion()));
   handle('appInfo', () => ({ version: app.getVersion(), update: updater.getStatus() }));
