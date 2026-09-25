@@ -31,35 +31,48 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Decide whether to publish a release
-        id: release
+      - name: Build installer and portable .exe
+        run: npx electron-builder --win nsis portable --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # Releases are published here in one step (not by electron-builder, whose parallel
+      # uploads can race each other). A release is published for a v* tag push, or for a
+      # push to main whose package.json version has no complete release yet.
+      - name: Publish GitHub release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="v$(node -p "require('./package.json').version")"
-          publish=never
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             if [ "$tag" != "$GITHUB_REF_NAME" ]; then
               echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $tag. Bump the version first."
               exit 1
             fi
-            publish=always
-          elif [ "$GITHUB_REF" == "refs/heads/main" ] && [ "$GITHUB_EVENT_NAME" == "push" ]; then
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "Release $tag already exists; building without publishing. Bump the version in package.json to release."
-            else
-              echo "Publishing new release $tag"
-              publish=always
-            fi
+          elif [ "$GITHUB_REF" != "refs/heads/main" ] || [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            echo "Not a push to main or a version tag; nothing to publish."
+            exit 0
           fi
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
 
-      - name: Build installer and portable .exe
-        run: npx electron-builder --win nsis portable --publish ${{ steps.release.outputs.publish }}
-        env:
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          shopt -s nullglob
+          files=(dist/*.exe dist/*.blockmap dist/latest.yml)
+          if [ ! -f dist/latest.yml ]; then
+            echo "::error::dist/latest.yml was not generated; installed apps could not find this update."
+            exit 1
+          fi
+
+          if assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>/dev/null); then
+            if echo "$assets" | grep -qx 'latest.yml'; then
+              echo "Release $tag is already complete. Bump the version in package.json to publish an update."
+              exit 0
+            fi
+            echo "Release $tag exists but is incomplete; uploading its files."
+            gh release upload "$tag" "${files[@]}" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            echo "Publishing release $tag"
+            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Route Sheet Distributor $tag" --generate-notes
+          fi
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
