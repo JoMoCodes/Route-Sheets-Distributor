@@ -22,7 +22,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------- state ----------
 let S = null;
-const ui = { view: 'distribute', selected: null, sheetFilter: '', assocFilter: '', previewSeq: 0, sending: null, testing: false, emailSettings: null, emailDraft: null };
+const ui = { view: 'distribute', selected: null, sheetFilter: '', assocFilter: '', previewSeq: 0, sending: null, testing: false, emailSettings: null, emailDraft: null, releaseNotes: [], staleWarned: false };
 
 const STATE_INFO = {
   ready: { label: 'Ready to send', tone: 'green' },
@@ -41,10 +41,12 @@ async function call(fn, ...args) {
   return r || { ok: false };
 }
 
-function toast(message, tone = '', details = []) {
-  const t = h('div', { class: `toast ${tone}` }, message, details.length ? h('ul', {}, details.map((d) => h('li', {}, d))) : null);
+/** Shows a message in the corner. `action` ({ label, run }) adds a button that also closes it. */
+function toast(message, tone = '', details = [], action = null) {
+  const t = h('div', { class: `toast ${tone}` }, message, details.length ? h('ul', {}, details.map((d) => h('li', {}, d))) : null,
+    action ? h('div', { class: 'toast-action' }, h('button', { class: 'btn small', onclick: () => { t.remove(); action.run(); } }, action.label)) : null);
   $('toasts').append(t);
-  setTimeout(() => t.remove(), tone === 'error' || details.length ? 9000 : 4500);
+  setTimeout(() => t.remove(), action ? 15000 : tone === 'error' || details.length ? 9000 : 4500);
 }
 
 const badge = (text, tone) => h('span', { class: `badge ${tone}` }, text);
@@ -52,6 +54,11 @@ const stateBadge = (state) => badge(STATE_INFO[state].label, STATE_INFO[state].t
 const statusBadge = (status) => (status ? badge(status, status === 'ACTIVE' ? 'green' : 'red') : badge('Not in associate data', 'red'));
 const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 const firstName = (n) => String(n || '').split(/\s+/)[0];
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const localDay = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** True once the Associate Data import is a month old. */
+const associatesStale = () => !!(S && S.associatesMeta && S.associatesMeta.refreshDueAt && Date.now() >= Date.parse(S.associatesMeta.refreshDueAt));
+const daysSince = (iso) => Math.floor((Date.now() - Date.parse(iso)) / 86400000);
 const byState = (state) => S.distribution.routes.filter((r) => r.state === state);
 
 // ---------- layout ----------
@@ -64,7 +71,7 @@ function render() {
   view.className = ui.view === 'sheets' ? 'flush' : '';
   const scroll = view.scrollTop;
   view.replaceChildren(
-    { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory, email: viewEmail }[ui.view](),
+    { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory, email: viewEmail, features: viewFeatures }[ui.view](),
   );
   if (ui.view !== 'sheets') view.scrollTop = scroll;
 }
@@ -85,6 +92,7 @@ function renderNav() {
     ['associates', 'Associates', S.associatesMeta ? S.associatesMeta.count : null, ''],
     ['history', 'History', S.runs.length || null, ''],
     ['email', 'Email settings', S.email.problem ? 'Set up' : null, 'warn'],
+    ['features', 'Features log', null, ''],
   ];
   $('nav').replaceChildren(...items.map(([id, label, count, tone]) =>
     h('button', { class: `nav-item ${ui.view === id ? 'active' : ''}`, onclick: () => (id === 'email' ? openEmailSettings() : go(id)) },
@@ -255,17 +263,19 @@ function importCards() {
   const pdf = S.run.pdf;
   const rf = S.run.routesFile;
   const multi = S.distribution.routes.filter((r) => r.listed.length > 1).length;
-  const card = (title, ok, file, detail, warnings, kind) => h('div', { class: 'panel import-card' },
-    h('div', { class: 'title' }, title, ok ? badge('Loaded', 'green') : badge('Not loaded', 'gray')),
+  const stale = associatesStale();
+  const card = (title, ok, file, detail, warnings, kind, old = false) => h('div', { class: `panel import-card ${old ? 'stale' : ''}` },
+    h('div', { class: 'title' }, title, old ? badge('Over a month old', 'amber') : ok ? badge('Loaded', 'green') : badge('Not loaded', 'gray')),
     h('div', { class: 'file' }, file || 'No file yet'),
     detail ? h('div', { class: 'detail' }, detail) : null,
+    old ? h('div', { class: 'stale-note' }, `Last imported ${plural(daysSince(a.importedAt), 'day')} ago. Import the latest Associate Data so new drivers, status changes and email addresses are up to date.`) : null,
     warnings && warnings.length ? h('ul', { class: 'issues' }, warnings.map((w) => h('li', { class: 'warn' }, w))) : null,
-    h('div', {}, h('button', { class: ok ? 'btn small' : 'btn primary small', onclick: () => doImport(kind) }, ok ? 'Replace…' : 'Import…')));
+    h('div', {}, h('button', { class: ok && !old ? 'btn small' : 'btn primary small', onclick: () => doImport(kind) }, old ? 'Import new…' : ok ? 'Replace…' : 'Import…')));
 
   return h('div', {},
     h('div', { class: 'grid imports' },
       card('Associate Data', !!a, a && `${a.fileName} · ${fmtDateTime(a.importedAt)}`,
-        a && `${a.count} associates · ${a.active} active · ${a.inactive} inactive${a.missingEmail ? ` · ${a.missingEmail} without email` : ''}`, a && a.warnings, 'associates'),
+        a && `${a.count} associates · ${a.active} active · ${a.inactive} inactive${a.missingEmail ? ` · ${a.missingEmail} without email` : ''}`, a && a.warnings, 'associates', stale),
       card('Route Sheet PDF', !!pdf, pdf && `${pdf.fileName} · ${fmtDateTime(pdf.importedAt)}`,
         pdf && (S.run.checkFailures.length
           ? h('span', { style: 'color:var(--red)' }, `${S.run.sheetCount} sheets · ${S.run.checkFailures.length} failed the number check (${S.run.checkFailures.join(', ')})`)
@@ -514,9 +524,20 @@ function viewAssociates() {
 }
 
 // ---------- History ----------
+async function changeOutputFolder() {
+  const r = await call('changeOutputFolder');
+  if (r.ok && r.result) toast(`Output folder changed to ${r.result.dir}.${r.result.moved ? ` Moved ${plural(r.result.moved, 'saved run')} there.` : ''}`, 'ok');
+}
+
 function viewHistory() {
+  const o = S.output;
   return h('div', {},
-    h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Saved runs'), h('p', {}, 'Every route sheet PDF you import is saved here with your decisions, so you can reopen or resend it later.'))),
+    h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Saved runs'), h('p', {}, 'Every route sheet PDF you import is saved here with your decisions, so you can reopen or resend it later.')),
+      h('div', { class: 'toolbar' },
+        h('button', { class: 'btn', onclick: () => call('openOutputFolder') }, 'Open output folder'),
+        h('button', { class: 'btn', title: 'Choose where saved runs are kept. The runs already saved move to the new folder.', onclick: changeOutputFolder }, 'Change output folder…'))),
+    h('div', { class: 'output-path' }, h('span', { class: 'faint' }, o.isDefault ? 'Output folder (default): ' : 'Output folder: '), h('span', { class: 'mono' }, o.dir)),
+    o.problem ? h('div', { class: 'callout warn', style: 'margin-bottom:12px' }, h('div', {}, o.problem), h('button', { class: 'btn small', onclick: changeOutputFolder }, 'Choose another folder')) : null,
     h('div', { class: 'panel table-wrap' }, S.runs.length ? h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Run'), h('th', { class: 'num' }, 'Route sheets'), h('th', { class: 'num' }, 'Routes'), h('th', {}, 'Last changed'), h('th', {}, ''))),
       h('tbody', {}, S.runs.map((r) => h('tr', {},
@@ -527,6 +548,18 @@ function viewHistory() {
         h('td', { class: 'toolbar', style: 'justify-content:flex-end' },
           h('button', { class: 'btn small', disabled: r.id === S.run.id, onclick: () => call('loadRun', r.id).then(() => go('distribute')) }, 'Open'),
           h('button', { class: 'btn small danger', onclick: () => call('deleteRun', r.id) }, 'Delete')))))) : h('div', { class: 'empty' }, 'No saved runs yet.')));
+}
+
+// ---------- Features log ----------
+function viewFeatures() {
+  const notes = ui.releaseNotes;
+  return h('div', { class: 'features-view' },
+    h('div', { class: 'section-head' }, h('div', {}, h('h2', {}, 'Features log'), h('p', {}, 'What changed in each version of the app, newest first.'))),
+    notes.length
+      ? notes.map((n) => h('div', { class: 'panel release-card' },
+        h('div', { class: 'release-head' }, h('h3', {}, `Version ${n.version}`), n.version === appVersion ? badge('Installed', 'blue') : null),
+        h('ul', {}, n.items.map((i) => h('li', {}, i)))))
+      : h('div', { class: 'panel empty' }, 'No changes to show.'));
 }
 
 // ---------- Email settings ----------
@@ -664,30 +697,85 @@ function renderUpdate(u) {
     box.title = u.message || '';
   }
   box.replaceChildren(...kids, h('div', { class: 'version' }, `Version ${appVersion} · `,
-    h('button', { class: 'link', onclick: async () => { const r = await api.releaseNotes(); if (r.ok) showWhatsNew(r.result, { all: true }); } }, "What's new")));
+    h('button', { class: 'link', onclick: () => go('features') }, 'Features log')));
 }
 
-// ---------- what's new ----------
+// ---------- dialogs ----------
+// One dialog shows at a time; others wait their turn (e.g. What's new, then the new-day question).
+const modalQueue = [];
+
+function showModal(dialog) {
+  if (!$('modal').hidden) return modalQueue.push(dialog);
+  $('modal').replaceChildren(dialog);
+  $('modal').hidden = false;
+  const focus = dialog.querySelector('.btn.primary');
+  if (focus) focus.focus();
+}
+
 function closeModal() {
   $('modal').hidden = true;
   $('modal').replaceChildren();
+  if (modalQueue.length) showModal(modalQueue.shift());
 }
 
-function showWhatsNew(notes, { all = false } = {}) {
+function showWhatsNew(notes) {
   if (!notes || !notes.length) return;
   const setUpEmail = S && S.email && S.email.problem;
-  const dialog = h('div', { class: 'modal panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'whatsNewTitle' },
-    h('h2', { id: 'whatsNewTitle' }, all ? "What's new" : `What's new in version ${notes[0].version}`),
+  showModal(h('div', { class: 'modal panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'whatsNewTitle' },
+    h('h2', { id: 'whatsNewTitle' }, `What's new in version ${notes[0].version}`),
     h('div', { class: 'modal-body' }, notes.map((n) => h('div', { class: 'release' },
-      notes.length > 1 || all ? h('div', { class: 'eyebrow' }, `Version ${n.version}`) : null,
+      notes.length > 1 ? h('div', { class: 'eyebrow' }, `Version ${n.version}`) : null,
       h('ul', {}, n.items.map((i) => h('li', {}, i)))))),
     h('div', { class: 'toolbar', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: () => { closeModal(); go('features'); } }, 'See older changes'),
       setUpEmail ? h('button', { class: 'btn', onclick: () => { closeModal(); openEmailSettings(); } }, 'Set up email') : null,
-      h('button', { class: 'btn primary', onclick: closeModal }, 'Got it')));
-  $('modal').replaceChildren(dialog);
-  $('modal').hidden = false;
-  dialog.querySelector('.btn.primary').focus();
+      h('button', { class: 'btn primary', onclick: closeModal }, 'Got it'))));
 }
+
+// ---------- new day & old Associate Data ----------
+/** The first time the app is used on a new day, offers to clear the runs from earlier days. */
+async function checkNewDay() {
+  const r = await api.newDayCheck();
+  const n = r.ok ? r.result.previousRuns : 0;
+  if (!n) return;
+  showModal(h('div', { class: 'modal panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'newDayTitle' },
+    h('h2', { id: 'newDayTitle' }, 'Clear earlier runs?'),
+    h('div', { class: 'modal-body' },
+      h('p', { style: 'margin:0' }, `It's a new day. You have ${plural(n, 'saved run')} from earlier days in History. Clear ${n === 1 ? 'it' : 'them'} to start the day fresh?`),
+      h('p', { class: 'muted', style: 'margin:0' }, 'Their route sheets, decisions and sent marks are deleted from the output folder. Your Associate Data and settings are kept.')),
+    h('div', { class: 'toolbar', style: 'justify-content:flex-end' },
+      h('button', { class: 'btn', onclick: closeModal }, 'Keep them'),
+      h('button', { class: 'btn primary', onclick: async () => {
+        closeModal();
+        const x = await call('clearPreviousRuns');
+        if (x.ok) toast(`Cleared ${plural(x.result, 'earlier run')}. Your Associate Data is kept.`, 'ok');
+      } }, `Clear ${plural(n, 'run')}`))));
+}
+
+/** Warns once per app session (and again after each re-import) when the Associate Data is a month old. */
+function checkAssociatesAge() {
+  if (!associatesStale()) {
+    ui.staleWarned = false;
+    return;
+  }
+  if (ui.staleWarned) return;
+  ui.staleWarned = true;
+  render();
+  toast(`Your Associate Data was last imported ${plural(daysSince(S.associatesMeta.importedAt), 'day')} ago. Import the latest file so new drivers and email changes are included.`,
+    'warn', [], { label: 'Import Associate Data', run: () => doImport('associates') });
+}
+
+let today = localDay();
+setInterval(async () => {
+  if (!S) return;
+  if (localDay() !== today) {
+    today = localDay();
+    const r = await api.state();
+    if (r.ok) { S = r.state; render(); }
+    checkNewDay();
+  }
+  checkAssociatesAge();
+}, 60 * 1000);
 
 $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
@@ -705,6 +793,10 @@ api.onEmailProgress((p) => {
   const r = await api.state();
   S = r.state;
   render();
+  const notes = await api.releaseNotes();
+  if (notes.ok) ui.releaseNotes = notes.result;
   const news = await api.whatsNewOnStart();
   if (news.ok) showWhatsNew(news.result);
+  checkAssociatesAge();
+  checkNewDay();
 })();

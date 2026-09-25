@@ -80,6 +80,12 @@ After you send, copy or open a draft, the route gets a ✓ so you can see what y
 
 Every day's work is saved, including your choices. Open **History** to reopen an older day. **New run** (top right) starts a fresh one.
 
+The first time you open the app on a new day, it asks whether to clear the runs from earlier days. Click **Clear** to start fresh or **Keep them** to leave History as it is. Your Associate Data and settings are never cleared.
+
+Once your Associate Data is over a month old, the **Associate Data** box on the Distribute page turns amber and the app reminds you to import the latest file.
+
+To see what changed in each version of the app, open **Features log** in the left menu.
+
 ---
 
 ## How it makes sure nothing is wrong
@@ -103,7 +109,9 @@ If any of these fail, the route waits for you, with the reason shown.
 
 ## Where your data lives
 
-Everything stays **on your computer**, in `%APPDATA%\Route Sheet Distributor\data`. Click **Open data folder** in the app to see it. Nothing is uploaded anywhere, except the route sheet emails you choose to send through your Gmail account.
+Everything stays **on your computer**, in `%APPDATA%\Route Sheet Distributor\data`. Click **Open data folder** in the app to see it.
+
+Your saved runs (each day's route sheets and choices) go in the **output folder**. On the **History** page, **Open output folder** shows it, and **Change output folder…** lets you pick another one, like a folder in Documents. Your saved runs move to the new folder with it. Nothing is uploaded anywhere, except the route sheet emails you choose to send through your Gmail account.
 
 ---
 

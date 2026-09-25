@@ -13,9 +13,27 @@ const { compareVersions, notesBetween } = require('./releaseNotes');
 
 const DRAFT_ID = 'draft';
 
-function localToday() {
-  const d = new Date();
+function localDay(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const localToday = () => localDay(new Date());
+
+/** The same moment one calendar month later; Jan 31 becomes the last day of February. */
+function addMonth(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + 1);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d.toISOString();
+}
+
+/** The day a saved run is for: its route sheet date, or the day it was last changed if it has none. */
+function runDay(run) {
+  if (run.date) return run.date;
+  const d = new Date(run.updatedAt || run.createdAt);
+  return Number.isNaN(d.getTime()) ? '' : localDay(d);
 }
 
 function runIdFor(sheet) {
@@ -93,8 +111,11 @@ class Service {
             inactive: list.filter((x) => x.status !== 'ACTIVE').length,
             missingEmail: list.filter((x) => !x.email).length,
             warnings: a.warnings || [],
+            // When this import is a month old and a newer Associate Data file should be imported.
+            refreshDueAt: addMonth(a.importedAt),
           }
         : null,
+      output: { dir: this.store.runsDir, isDefault: this.store.runsDir === this.store.defaultRunsDir, problem: this.store.outputDirProblem },
       runs: this.store.listRuns().map((r) => ({ id: r.id, label: runLabel(r), date: r.date, updatedAt: r.updatedAt, sheets: r.sheets.length, routes: r.routes.length })),
       run: {
         id: this.run.id,
@@ -223,6 +244,41 @@ class Service {
   deleteRun(id) {
     this.store.deleteRun(id);
     if (this.run.id === id) this.newRun();
+  }
+
+  // ---------- clearing earlier days ----------
+
+  /** Saved runs from before `today` (YYYY-MM-DD, local). */
+  previousRuns(today = localToday()) {
+    return this.store.listRuns().filter((r) => runDay(r) < today);
+  }
+
+  /**
+   * Called when the app opens and when the date changes while it is open. The first time on a
+   * new day, returns how many runs from earlier days could be cleared (so the app can ask);
+   * otherwise, or when there is nothing to clear, returns 0.
+   */
+  newDayCheck(today = localToday()) {
+    if (this.store.getSettings().lastDayCheck === today) return { previousRuns: 0 };
+    this.store.setSettings({ lastDayCheck: today });
+    return { previousRuns: this.previousRuns(today).length };
+  }
+
+  /** Deletes every saved run from before today. The Associate Data and settings are kept. */
+  clearPreviousRuns(today = localToday()) {
+    if (this.sending) throw new Error('Wait for the emails to finish sending before clearing earlier runs.');
+    const old = this.previousRuns(today);
+    for (const r of old) this.store.deleteRun(r.id);
+    if (old.some((r) => r.id === this.run.id)) this.newRun();
+    return old.length;
+  }
+
+  // ---------- output folder ----------
+
+  /** Moves the saved runs to `dir` and keeps saving them there. */
+  setOutputDir(dir) {
+    if (this.sending) throw new Error('Wait for the emails to finish sending before changing the output folder.');
+    return this.store.setOutputDir(dir);
   }
 
   sheet(routeCode) {
@@ -486,4 +542,4 @@ function renderSummaryCsv(dist) {
   return lines.join('\r\n');
 }
 
-module.exports = { Service, runIdFor, runLabel, detectKind, renderSummaryHtml, STATE_LABEL, DRAFT_ID };
+module.exports = { Service, runIdFor, runLabel, detectKind, renderSummaryHtml, addMonth, STATE_LABEL, DRAFT_ID };
