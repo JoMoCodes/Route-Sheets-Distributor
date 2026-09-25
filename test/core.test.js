@@ -354,3 +354,35 @@ test('Email all: a rejected login stops the batch before anything is sent', asyn
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------- what's new ----------
+const { RELEASE_NOTES, compareVersions, notesBetween } = require('../src/core/releaseNotes');
+
+test("What's new: notes cover the running version and pick the versions in between", () => {
+  assert.equal(RELEASE_NOTES[0].version, require('../package.json').version, 'add release notes for the version in package.json');
+  assert.ok(compareVersions('1.10.0', '1.9.0') > 0);
+  assert.equal(compareVersions('1.1.0', '1.1'), 0);
+  assert.deepEqual(notesBetween('1.0.0', '1.1.1').map((n) => n.version), ['1.1.1', '1.1.0']);
+  assert.deepEqual(notesBetween('1.1.1', '1.1.1'), []);
+});
+
+test("What's new: shown once after an update, never on a fresh install", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const fresh = new Service(new Store(path.join(dir, 'fresh')));
+    assert.deepEqual(fresh.whatsNewOnStart('1.1.1'), [], 'fresh install: nothing to announce');
+    assert.deepEqual(fresh.whatsNewOnStart('1.1.1'), []);
+
+    // Someone who used 1.0.0 or 1.1.0 (no version recorded) and just updated.
+    const oldStore = new Store(path.join(dir, 'old'));
+    oldStore.setSettings({ theme: 'dark' });
+    const updated = new Service(oldStore);
+    assert.deepEqual(updated.whatsNewOnStart('1.1.1').map((n) => n.version), ['1.1.1', '1.1.0']);
+    assert.deepEqual(updated.whatsNewOnStart('1.1.1'), [], 'only shown the first time');
+
+    oldStore.setSettings({ lastSeenVersion: '1.1.0' });
+    assert.deepEqual(new Service(oldStore).whatsNewOnStart('1.1.1').map((n) => n.version), ['1.1.1']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

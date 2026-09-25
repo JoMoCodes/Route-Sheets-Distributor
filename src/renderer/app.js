@@ -663,8 +663,34 @@ function renderUpdate(u) {
   } else if (u.state === 'unsupported') {
     box.title = u.message || '';
   }
-  box.replaceChildren(...kids, h('div', { class: 'version' }, `Version ${appVersion}`));
+  box.replaceChildren(...kids, h('div', { class: 'version' }, `Version ${appVersion} · `,
+    h('button', { class: 'link', onclick: async () => { const r = await api.releaseNotes(); if (r.ok) showWhatsNew(r.result, { all: true }); } }, "What's new")));
 }
+
+// ---------- what's new ----------
+function closeModal() {
+  $('modal').hidden = true;
+  $('modal').replaceChildren();
+}
+
+function showWhatsNew(notes, { all = false } = {}) {
+  if (!notes || !notes.length) return;
+  const setUpEmail = S && S.email && S.email.problem;
+  const dialog = h('div', { class: 'modal panel', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'whatsNewTitle' },
+    h('h2', { id: 'whatsNewTitle' }, all ? "What's new" : `What's new in version ${notes[0].version}`),
+    h('div', { class: 'modal-body' }, notes.map((n) => h('div', { class: 'release' },
+      notes.length > 1 || all ? h('div', { class: 'eyebrow' }, `Version ${n.version}`) : null,
+      h('ul', {}, n.items.map((i) => h('li', {}, i)))))),
+    h('div', { class: 'toolbar', style: 'justify-content:flex-end' },
+      setUpEmail ? h('button', { class: 'btn', onclick: () => { closeModal(); openEmailSettings(); } }, 'Set up email') : null,
+      h('button', { class: 'btn primary', onclick: closeModal }, 'Got it')));
+  $('modal').replaceChildren(dialog);
+  $('modal').hidden = false;
+  dialog.querySelector('.btn.primary').focus();
+}
+
+$('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
 api.onUpdateStatus(renderUpdate);
 api.onEmailProgress((p) => {
   ui.sending = p;
@@ -679,4 +705,6 @@ api.onEmailProgress((p) => {
   const r = await api.state();
   S = r.state;
   render();
+  const news = await api.whatsNewOnStart();
+  if (news.ok) showWhatsNew(news.result);
 })();

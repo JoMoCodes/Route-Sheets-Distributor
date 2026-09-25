@@ -7,6 +7,7 @@ const path = require('path');
 const { Store } = require('./core/store');
 const { Service } = require('./core/service');
 const { safeFileName } = require('./core/exporter');
+const { notesBetween } = require('./core/releaseNotes');
 const updater = require('./updater');
 
 let win;
@@ -207,6 +208,8 @@ function registerIpc() {
   });
   handle('getTheme', () => store.getSettings().theme || 'dark');
   handle('openDataFolder', () => shell.openPath(store.dir));
+  handle('whatsNewOnStart', () => service.whatsNewOnStart(app.getVersion()));
+  handle('releaseNotes', () => notesBetween('0.0.0', app.getVersion()));
   handle('appInfo', () => ({ version: app.getVersion(), update: updater.getStatus() }));
   handle('checkForUpdates', () => updater.check());
   handle('installUpdate', () => updater.install());

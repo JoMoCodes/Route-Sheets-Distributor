@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('api', {
   setTheme: call('setTheme'),
   getTheme: call('getTheme'),
   openDataFolder: call('openDataFolder'),
+  whatsNewOnStart: call('whatsNewOnStart'),
+  releaseNotes: call('releaseNotes'),
   appInfo: call('appInfo'),
   checkForUpdates: call('checkForUpdates'),
   installUpdate: call('installUpdate'),
