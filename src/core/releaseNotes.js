@@ -4,6 +4,15 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.2.0',
+    items: [
+      'New Features log page (left menu) lists what changed in every version, so you can look back at older changes any time.',
+      'The first time you open the app on a new day (or when the date changes while it is open), it offers to clear the runs from earlier days. Your Associate Data and settings are always kept.',
+      'The Associate Data box on the Distribute page warns you once your Associate Data is over a month old, so new drivers and email changes are not missed.',
+      'History has new "Open output folder" and "Change output folder" buttons. Changing the folder moves your saved runs there too.',
+    ],
+  },
+  {
     version: '1.1.1',
     items: [
       'Updates now install quietly. Click "Restart to update" and the app reopens by itself, with no setup screens.',
