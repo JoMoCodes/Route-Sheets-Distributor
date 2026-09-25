@@ -6,6 +6,14 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.2.1',
+    items: [
+      'Each box on the Distribute page now has a "?" button. Click it to see where to download that file, with pictures.',
+      'The Associate Data and Routes File help links you straight to Cortex. The Route Sheet PDF help links you to Slack.',
+      'The Import buttons on the Distribute page now line up with each other.',
+    ],
+  },
+  {
     version: '1.2.0',
     items: [
       'New "Features log" page in the left menu. It shows what changed in every version, so you can look back any time.',
