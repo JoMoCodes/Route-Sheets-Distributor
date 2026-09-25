@@ -1,6 +1,6 @@
-<!-- Write this for someone who doesn't code. Plain words, short sentences, no file or function names. -->
+<!-- Write this for someone who doesn't code. Plain words, short sentences, no file or function names. Keep headings short, with no notes in brackets. The last section is optional and may use technical words. -->
 
-## What changed (in plain words)
+## What changed
 
 - 
 
@@ -12,6 +12,6 @@
 
 - 
 
-## For whoever maintains the app (optional, technical words OK here)
+## For whoever maintains the app
 
 - 
