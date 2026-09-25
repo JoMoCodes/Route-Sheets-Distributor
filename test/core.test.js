@@ -190,3 +190,167 @@ test('Service: import in any order, persist decisions, export drafts', async () 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------- email sending (fake SMTP transport; nothing leaves the machine) ----------
+const mailer = require('../src/core/mailer');
+
+const fakeSecrets = {
+  available: () => true,
+  encrypt: (s) => `enc:${Buffer.from(s).toString('base64')}`,
+  decrypt: (b) => {
+    if (!b.startsWith('enc:')) throw new Error('not ours');
+    return Buffer.from(b.slice(4), 'base64').toString();
+  },
+};
+
+/** Records what would be sent; `fail` makes chosen recipients' sends fail, `authFail` rejects the login. */
+function fakeTransport({ fail = [], authFail = false } = {}) {
+  const log = { options: null, sent: [], verified: 0, closed: 0 };
+  const create = (options) => {
+    log.options = options;
+    return {
+      verify: async () => {
+        log.verified++;
+        if (authFail) throw Object.assign(new Error('Invalid login: 535-5.7.8 Username and Password not accepted'), { code: 'EAUTH', responseCode: 535 });
+        return true;
+      },
+      sendMail: async (m) => {
+        if (m.to.some((t) => fail.includes(t.address || t))) throw Object.assign(new Error('Mailbox unavailable'), { code: 'EENVELOPE', response: '550 Mailbox unavailable' });
+        log.sent.push(m);
+        return { messageId: String(log.sent.length) };
+      },
+      close: () => { log.closed++; },
+    };
+  };
+  return { create, log };
+}
+
+async function serviceWithRun(dir, transport) {
+  const files = { a: path.join(dir, 'AssociateData.csv'), r: path.join(dir, 'Routes.csv'), p: path.join(dir, 'sheets.pdf') };
+  fs.writeFileSync(files.a, ASSOCIATES_CSV);
+  fs.writeFileSync(files.r, ROUTES_CSV);
+  fs.writeFileSync(files.p, pdfBuffer);
+  const store = new Store(path.join(dir, 'data'));
+  const sv = new Service(store, { secrets: fakeSecrets, createTransport: transport && transport.create });
+  for (const f of [files.a, files.r, files.p]) await sv.importFile(f);
+  return { sv, store };
+}
+
+test('Mailer: Gmail defaults use STARTTLS on 587; 465 uses TLS from the start', () => {
+  const s = mailer.normalizeSettings({ fromAddress: ' me@gmail.com ' });
+  assert.equal(s.smtpHost, 'smtp.gmail.com');
+  assert.equal(s.fromAddress, 'me@gmail.com');
+  const o = mailer.transportOptions(s, 'pw');
+  assert.equal(o.port, 587);
+  assert.equal(o.secure, false);
+  assert.equal(o.requireTLS, true);
+  assert.deepEqual(o.auth, { user: 'me@gmail.com', pass: 'pw' }, 'login defaults to the From address');
+  assert.equal(mailer.transportOptions({ ...s, smtpPort: 465, username: 'other' }, 'pw').secure, true);
+  assert.equal(mailer.transportOptions({ ...s, username: 'other' }, 'pw').auth.user, 'other');
+});
+
+test('Mailer: explains what is missing and turns SMTP errors into plain words', () => {
+  const s = mailer.normalizeSettings({});
+  assert.match(mailer.validateConfig(s, 'pw'), /From/);
+  assert.match(mailer.validateConfig({ ...s, fromAddress: 'nope' }, 'pw'), /not a valid email/);
+  assert.match(mailer.validateConfig({ ...s, fromAddress: 'me@gmail.com' }, ''), /App Password/);
+  assert.match(mailer.validateConfig({ ...s, fromAddress: 'me@gmail.com', bcc: 'x' }, 'pw'), /BCC/);
+  assert.equal(mailer.validateConfig({ ...s, fromAddress: 'me@gmail.com' }, 'pw'), null);
+  assert.match(mailer.describeError({ code: 'EAUTH', message: 'Invalid login' }), /App Password/);
+  assert.match(mailer.describeError({ code: 'ETIMEDOUT', message: 'timeout' }), /Could not reach/);
+  assert.match(mailer.describeError({ responseCode: 550, response: '550 5.4.5 Daily user sending limit exceeded' }), /daily sending limit/);
+});
+
+test('Email settings: App Password is stored encrypted, Gmail spaces removed, unreadable blobs count as not set', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(path.join(dir, 'data'));
+    const sv = new Service(store, { secrets: fakeSecrets });
+    assert.match(sv.emailSettings().problem, /From/);
+    const saved = sv.saveEmailSettings({ fromAddress: 'dispatch@gmail.com', fromName: 'Dispatch', password: 'abcd efgh ijkl mnop' });
+    assert.equal(saved.hasPassword, true);
+    assert.equal(saved.problem, null);
+    assert.equal(saved.password, undefined, 'the password is never sent back to the screen');
+    const raw = fs.readFileSync(path.join(dir, 'data', 'settings.json'), 'utf8');
+    assert.ok(!raw.includes('abcd'), 'no plain-text password in settings.json');
+    assert.equal(sv.emailPassword(), 'abcdefghijklmnop');
+
+    sv.saveEmailSettings({ ...saved, fromName: 'Dispatch 2' });
+    assert.equal(sv.emailPassword(), 'abcdefghijklmnop', 'saving with a blank password keeps the saved one');
+
+    store.setSettings({ emailPassword: 'from-another-pc' });
+    assert.equal(sv.emailSettings().hasPassword, false);
+    assert.match(sv.emailProblem(), /App Password/);
+
+    sv.saveEmailSettings({ ...saved, password: 'x' });
+    assert.equal(sv.saveEmailSettings({ ...saved, clearPassword: true }).hasPassword, false);
+    assert.throws(() => new Service(store, { secrets: { ...fakeSecrets, available: () => false } }).saveEmailSettings({ ...saved, password: 'x' }), /securely/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Email all: sends one email per ready route with its PDF page, marks each sent, skips what it cannot send', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  const t = fakeTransport({ fail: ['eve@example.com'] });
+  try {
+    const { sv, store } = await serviceWithRun(dir, t);
+    await assert.rejects(sv.emailRoutes(['CX101']), /isn't set up/);
+    assert.equal(t.log.verified, 0, 'nothing is attempted before email is set up');
+
+    sv.saveEmailSettings({ fromAddress: 'dispatch@gmail.com', fromName: 'Dispatch', password: 'pw', bcc: 'boss@example.com' });
+    sv.setDecision('CX102', { recipients: ['BBBB2222'] });
+    sv.setDecision('CX103', { recipients: ['CCCC3333'] }); // Carol has no email
+    sv.setDecision('CX107', { recipients: ['EEEE5555'], manual: true }); // Eve's mailbox rejects
+
+    const ready = sv.distribution().routes.filter((r) => r.state === 'ready').map((r) => r.routeCode);
+    const unsent = sv.unsentRoutes();
+    assert.ok(!unsent.includes('CX103'), 'a driver with no email is left out of Email all');
+    assert.equal(sv.state().email.unsent, unsent.length);
+
+    const progress = [];
+    const out = await sv.emailRoutes([...unsent, 'CX103', 'CX104'], (p) => progress.push(p));
+    assert.deepEqual(out.failed.map((f) => f.routeCode), ['CX107']);
+    assert.match(out.failed[0].error, /refused the address/);
+    assert.deepEqual(out.skipped.map((x) => x.routeCode), ['CX103', 'CX104']);
+    assert.match(out.skipped[0].reason, /No email address on file for Carol/);
+    assert.deepEqual(out.sent.sort(), unsent.filter((c) => c !== 'CX107').sort());
+    assert.ok(ready.includes('CX101'));
+    assert.equal(t.log.verified, 1, 'one login for the whole batch');
+    assert.equal(t.log.closed, 1);
+    assert.deepEqual(progress.at(-1), { done: unsent.length, total: unsent.length, routeCode: unsent.at(-1) });
+
+    const m = t.log.sent.find((x) => x.subject.includes('CX101'));
+    assert.deepEqual(m.from, { name: 'Dispatch', address: 'dispatch@gmail.com' });
+    assert.deepEqual(m.to, [{ name: 'Alice Marie Driver', address: 'alice@example.com' }]);
+    assert.equal(m.bcc, 'boss@example.com');
+    assert.ok(m.html.includes('Hi Alice,'));
+    assert.equal(m.attachments.length, 1);
+    assert.equal(m.attachments[0].contentType, 'application/pdf');
+    assert.equal((await PDFDocument.load(m.attachments[0].content)).getPageCount(), 1);
+
+    const saved = store.loadRun(sv.run.id);
+    assert.equal(saved.sent.CX101.how, 'emailed');
+    assert.deepEqual(saved.sent.CX101.to, ['alice@example.com']);
+    assert.equal(saved.sent.CX107, undefined, 'a failed send is not marked sent');
+    assert.deepEqual(sv.unsentRoutes(), ['CX107'], 'only the failed one is left for the next Email all');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Email all: a rejected login stops the batch before anything is sent', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  const t = fakeTransport({ authFail: true });
+  try {
+    const { sv } = await serviceWithRun(dir, t);
+    sv.saveEmailSettings({ fromAddress: 'dispatch@gmail.com', password: 'wrong' });
+    await assert.rejects(sv.emailRoutes(sv.unsentRoutes()), /Gmail rejected the login/);
+    await assert.rejects(sv.sendTestEmail(), /Gmail rejected the login/);
+    assert.equal(t.log.sent.length, 0);
+    assert.deepEqual(sv.run.sent, {});
+    assert.equal(sv.sending, false, 'a failed batch does not block the next one');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -8,6 +8,7 @@ const { readTable, parseAssociates, parseRoutes, parseCsvRows } = require('./tab
 const { distribute, STATES } = require('./matcher');
 const { buildRouteEmail, extractPages, safeFileName } = require('./exporter');
 const { renderEmailHtml, subjectFor, esc } = require('./emailRender');
+const mailer = require('./mailer');
 
 const DRAFT_ID = 'draft';
 
@@ -42,8 +43,16 @@ async function detectKind(filePath, buffer) {
 }
 
 class Service {
-  constructor(store) {
+  /**
+   * @param {Store} store
+   * @param {{secrets?: {available():boolean, encrypt(s:string):string, decrypt(s:string):string}, createTransport?: Function}} [options]
+   *   secrets encrypts the email App Password (Electron safeStorage in the app); createTransport is nodemailer's, swappable in tests.
+   */
+  constructor(store, options = {}) {
     this.store = store;
+    this.secrets = options.secrets || null;
+    this.createTransport = options.createTransport || null;
+    this.sending = false;
     // Reopen the last run only if it is for today; older runs stay available under History.
     const last = store.getSettings().lastRunId;
     const run = last && store.loadRun(last);
@@ -100,6 +109,7 @@ class Service {
         decisions: this.run.decisions,
       },
       distribution: this.distribution(),
+      email: { problem: this.emailProblem(), fromAddress: this.emailConfig().fromAddress, sending: this.sending, unsent: this.unsentRoutes().length },
     };
   }
 
@@ -243,6 +253,144 @@ class Service {
     const pdf = this.store.readRunPdf(this.run.id);
     if (!sheet || !pdf) throw new Error('The original route sheet PDF for this run is not available.');
     return extractPages(pdf, [sheet.pageNumber]);
+  }
+
+  // ---------- sending email ----------
+
+  emailConfig() {
+    return mailer.normalizeSettings(this.store.getSettings().email);
+  }
+
+  /** The saved App Password, decrypted. "" if none is saved or it can't be decrypted (e.g. settings copied from another PC). */
+  emailPassword() {
+    const blob = this.store.getSettings().emailPassword;
+    if (!blob || !this.secrets) return '';
+    try {
+      return this.secrets.decrypt(blob) || '';
+    } catch {
+      return '';
+    }
+  }
+
+  /** null when email is ready to use, otherwise what still needs setting up. */
+  emailProblem() {
+    return mailer.validateConfig(this.emailConfig(), this.emailPassword());
+  }
+
+  emailSettings() {
+    return { ...this.emailConfig(), hasPassword: !!this.emailPassword(), canStorePassword: !!(this.secrets && this.secrets.available()), problem: this.emailProblem() };
+  }
+
+  /** Saves the email settings. `password` replaces the saved App Password when given; `clearPassword` removes it. */
+  saveEmailSettings(input = {}) {
+    const email = mailer.normalizeSettings(input);
+    this.store.setSettings({ email });
+    if (input.clearPassword) {
+      this.store.setSettings({ emailPassword: '' });
+    } else if (input.password && input.password.trim()) {
+      if (!this.secrets || !this.secrets.available()) throw new Error("The other settings were saved, but this computer can't store the App Password securely, so the password was not saved.");
+      // Gmail shows App Passwords in groups of four ("abcd efgh ijkl mnop"); the spaces are not part of it.
+      const pass = /(^|\.)(gmail|googlemail)\.com$/i.test(email.smtpHost) ? input.password.replace(/\s+/g, '') : input.password.trim();
+      this.store.setSettings({ emailPassword: this.secrets.encrypt(pass) });
+    }
+    return this.emailSettings();
+  }
+
+  /** Why this route can't be emailed right now, or null if it can. */
+  sendProblem(route) {
+    if (!route) return 'That route is not in this run.';
+    if (route.state !== STATES.READY) return route.headline || 'This route sheet is not ready to send.';
+    if (!route.recipients.length) return 'Nobody is chosen to receive this route sheet.';
+    const noEmail = route.recipients.filter((p) => !p.email);
+    if (noEmail.length) return `No email address on file for ${noEmail.map((p) => p.name).join(' & ')}.`;
+    const bad = route.recipients.find((p) => !mailer.isEmail(p.email));
+    if (bad) return `"${bad.email}" (${bad.name}) is not a valid email address.`;
+    return null;
+  }
+
+  /** Routes "Email all" would send: ready, with an email address, and not already marked sent. */
+  unsentRoutes() {
+    return this.distribution().routes.filter((r) => !this.run.sent[r.routeCode] && !this.sendProblem(r)).map((r) => r.routeCode);
+  }
+
+  /**
+   * Emails each route sheet to its driver(s) over one signed-in connection. Throws before sending
+   * anything if email isn't set up or the login fails. Each success is saved as sent right away.
+   * @returns {Promise<{sent:string[], failed:{routeCode:string,error:string}[], skipped:{routeCode:string,reason:string}[]}>}
+   */
+  async emailRoutes(routeCodes, onProgress = () => {}) {
+    if (this.sending) throw new Error('Route sheets are already being sent. Wait for that to finish.');
+    const config = this.emailConfig();
+    const password = this.emailPassword();
+    const problem = mailer.validateConfig(config, password);
+    if (problem) throw new Error(`Email isn't set up yet: ${problem} Open Email settings to finish setting it up.`);
+
+    this.sending = true;
+    // Sent marks go to the run the emails came from, even if another run is opened meanwhile.
+    const run = this.run;
+    const result = { sent: [], failed: [], skipped: [] };
+    let session = null;
+    try {
+      const pdf = this.store.readRunPdf(run.id);
+      const jobs = [];
+      for (const code of routeCodes) {
+        const route = this.routeResult(code);
+        const why = this.sendProblem(route);
+        if (why) {
+          result.skipped.push({ routeCode: code, reason: why });
+          continue;
+        }
+        const e = await buildRouteEmail(this.sheet(code), route.recipients, pdf);
+        jobs.push({
+          routeCode: code,
+          to: route.recipients.map((p) => p.email),
+          message: mailer.buildMessage(config, {
+            to: route.recipients.map((p) => ({ name: p.name, address: p.email })),
+            subject: e.subject,
+            html: e.html,
+            text: e.text,
+            attachments: e.pdf ? [{ filename: e.pdfName, content: e.pdf, contentType: 'application/pdf' }] : [],
+          }),
+        });
+      }
+      if (!jobs.length) return result;
+
+      onProgress({ done: 0, total: jobs.length });
+      session = await mailer.openSession(config, password, this.createTransport);
+      for (const [i, job] of jobs.entries()) {
+        const r = await session.send(job.message);
+        if (r.ok) {
+          run.sent[job.routeCode] = { how: 'emailed', at: new Date().toISOString(), to: job.to };
+          this.store.saveRun(run);
+          result.sent.push(job.routeCode);
+        } else {
+          result.failed.push({ routeCode: job.routeCode, error: r.error });
+        }
+        onProgress({ done: i + 1, total: jobs.length, routeCode: job.routeCode });
+      }
+      return result;
+    } finally {
+      if (session) session.close();
+      this.sending = false;
+    }
+  }
+
+  /** Sends a short test message (no attachment) to confirm the login works. */
+  async sendTestEmail(to) {
+    const config = this.emailConfig();
+    const password = this.emailPassword();
+    const problem = mailer.validateConfig(config, password);
+    if (problem) throw new Error(problem);
+    const address = String(to || config.fromAddress).trim();
+    if (!mailer.isEmail(address)) throw new Error(`"${address}" is not a valid email address.`);
+    const session = await mailer.openSession(config, password, this.createTransport);
+    try {
+      const r = await session.send(mailer.buildTestMessage(config, address));
+      if (!r.ok) throw new Error(r.error);
+      return address;
+    } finally {
+      session.close();
+    }
   }
 
   /** Writes drafts, single-page PDFs and a summary into `<dir>/<run label>/`. Returns the folder. */
