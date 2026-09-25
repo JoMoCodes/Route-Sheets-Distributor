@@ -6,10 +6,14 @@ Anything that can't be matched exactly is never sent silently. The app shows you
 
 ## Install (Windows)
 
-1. Open the repo's **Releases** page and download the latest `Route-Sheet-Distributor-Setup-<version>.exe` installer. Before the first release is published, use the **Actions** tab → **Build Windows app** → latest run → **Route-Sheet-Distributor-Windows** artifact instead.
-2. Run `Route-Sheet-Distributor-Setup-1.0.0.exe` to install it, or `Route-Sheet-Distributor-1.0.0-portable.exe` to run it without installing.
+1. **Download the app.** Go to the [latest release](https://github.com/JoMoCodes/Route-Sheets-Distributor/releases/latest). Under **Assets**, click the file whose name starts with `Route-Sheet-Distributor-Setup` and ends in `.exe`.
+2. **Open the file you downloaded.** You'll usually find it in your **Downloads** folder.
+3. **If Windows shows a blue "Windows protected your PC" box,** click **More info**, then **Run anyway**. This appears because the app isn't registered with Microsoft (that costs money), not because anything is wrong.
+4. **Follow the installer.** Keep the default choices and click **Next** / **Install**, then **Finish**. You'll get a **Route Sheet Distributor** shortcut on your desktop and in the Start menu.
 
-The build isn't code-signed, so Windows SmartScreen may warn the first time. Choose **More info → Run anyway**.
+That's it. From now on the app **updates itself**: when a new version is out, a green **Restart to update** button appears at the bottom-left of the app.
+
+> **Can't install programs on this computer?** On the same release page, download the file ending in `-portable.exe` instead. Double-click it and the app runs straight away, with no installing. It won't update itself, though, so you'll need to download the newest one yourself now and then.
 
 ## Updates
 
