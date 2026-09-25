@@ -386,3 +386,90 @@ test("What's new: shown once after an update, never on a fresh install", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------- new day, Associate Data age, output folder ----------
+const { addMonth } = require('../src/core/service');
+
+test('Associate Data: due for a new import one calendar month after it was imported', () => {
+  const local = (y, m, d) => new Date(y, m - 1, d, 9, 30).toISOString();
+  assert.equal(addMonth(local(2026, 8, 15)), local(2026, 9, 15));
+  assert.equal(addMonth(local(2026, 1, 31)), local(2026, 2, 28), 'short months use their last day');
+  assert.equal(addMonth(local(2026, 12, 10)), local(2027, 1, 10));
+  assert.equal(addMonth('not a date'), null);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(dir);
+    store.saveAssociates({ fileName: 'a.csv', importedAt: local(2026, 8, 15), associates: associates(), warnings: [] });
+    assert.equal(new Service(store).state().associatesMeta.refreshDueAt, local(2026, 9, 15));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const savedRun = (store, id, date, updatedAt) => {
+  store.writeJson(path.join(store.runDir(id), 'run.json'), { id, date, sheets: [], routes: [], decisions: {}, sent: {}, updatedAt });
+};
+
+test('New day: asks once per day, clears only runs from earlier days, keeps the Associate Data', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(dir);
+    store.saveAssociates({ fileName: 'a.csv', importedAt: new Date().toISOString(), associates: associates(), warnings: [] });
+    savedRun(store, 'XYZ1_2026-09-23_CYCLE_1', '2026-09-23', '2026-09-23T15:00:00.000Z');
+    savedRun(store, 'XYZ1_2026-09-24_CYCLE_1', '2026-09-24', '2026-09-24T15:00:00.000Z');
+    savedRun(store, 'XYZ1_2026-09-25_CYCLE_1', '2026-09-25', '2026-09-25T15:00:00.000Z');
+    const service = new Service(store);
+    service.loadRun('XYZ1_2026-09-24_CYCLE_1');
+
+    assert.deepEqual(service.newDayCheck('2026-09-25'), { previousRuns: 2 });
+    assert.deepEqual(service.newDayCheck('2026-09-25'), { previousRuns: 0 }, 'only asked the first time that day');
+
+    assert.equal(service.clearPreviousRuns('2026-09-25'), 2);
+    assert.deepEqual(store.listRuns().map((r) => r.id), ['XYZ1_2026-09-25_CYCLE_1']);
+    assert.equal(service.state().run.id, 'draft', 'the open run was cleared, so a new one starts');
+    assert.equal(service.associates().length, associates().length, 'Associate Data is kept');
+
+    assert.deepEqual(service.newDayCheck('2026-09-26'), { previousRuns: 1 }, 'the next day asks again');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Output folder: changing it moves the saved runs, and the app keeps using it after a restart', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(path.join(dir, 'data'));
+    savedRun(store, 'RUN_A', '2026-09-24', '2026-09-24T15:00:00.000Z');
+    savedRun(store, 'RUN_B', '2026-09-25', '2026-09-25T15:00:00.000Z');
+    store.saveRunPdf('RUN_A', Buffer.from('%PDF-1.4 test'));
+    const service = new Service(store);
+    assert.equal(service.state().output.isDefault, true);
+
+    const out = path.join(dir, 'My runs');
+    assert.deepEqual(service.setOutputDir(out), { dir: out, moved: 2 });
+    assert.deepEqual(store.runIds(store.defaultRunsDir), [], 'nothing left behind');
+    assert.equal(store.readRunPdf('RUN_A').toString(), '%PDF-1.4 test');
+    assert.deepEqual(service.state().output, { dir: out, isDefault: false, problem: null });
+
+    const reopened = new Store(path.join(dir, 'data'));
+    assert.equal(reopened.runsDir, out);
+    assert.deepEqual(reopened.listRuns().map((r) => r.id), ['RUN_B', 'RUN_A']);
+
+    // A folder that already has a run with the same name: nothing moves.
+    const other = path.join(dir, 'other');
+    savedRun({ runDir: (id) => path.join(other, id), writeJson: store.writeJson }, 'RUN_B', '2026-09-20', '2026-09-20T15:00:00.000Z');
+    assert.throws(() => reopened.setOutputDir(other), /already has a folder named RUN_B/);
+    assert.equal(reopened.runsDir, out);
+    assert.deepEqual(reopened.runIds().sort(), ['RUN_A', 'RUN_B']);
+
+    assert.throws(() => reopened.setOutputDir(path.join(out, 'RUN_A', 'inside')), /inside the saved run/);
+
+    // Moving back to the default folder clears the setting.
+    reopened.setOutputDir(reopened.defaultRunsDir);
+    assert.equal(reopened.getSettings().outputDir, null);
+    assert.deepEqual(reopened.runIds().sort(), ['RUN_A', 'RUN_B']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
