@@ -22,7 +22,7 @@ const $ = (id) => document.getElementById(id);
 
 // ---------- state ----------
 let S = null;
-const ui = { view: 'distribute', selected: null, sheetFilter: '', assocFilter: '', previewSeq: 0 };
+const ui = { view: 'distribute', selected: null, sheetFilter: '', assocFilter: '', previewSeq: 0, sending: null, testing: false, emailSettings: null, emailDraft: null };
 
 const STATE_INFO = {
   ready: { label: 'Ready to send', tone: 'green' },
@@ -31,7 +31,7 @@ const STATE_INFO = {
   'no-sheet': { label: 'No route sheet', tone: 'red' },
   skipped: { label: 'Not sending', tone: 'gray' },
 };
-const SENT_LABEL = { copied: 'Copied', draft: 'Draft opened', 'mail-app': 'Mail app opened', manual: 'Marked sent' };
+const SENT_LABEL = { emailed: 'Emailed', copied: 'Copied', draft: 'Draft opened', 'mail-app': 'Mail app opened', manual: 'Marked sent' };
 
 async function call(fn, ...args) {
   const r = await api[fn](...args);
@@ -64,7 +64,7 @@ function render() {
   view.className = ui.view === 'sheets' ? 'flush' : '';
   const scroll = view.scrollTop;
   view.replaceChildren(
-    { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory }[ui.view](),
+    { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory, email: viewEmail }[ui.view](),
   );
   if (ui.view !== 'sheets') view.scrollTop = scroll;
 }
@@ -84,10 +84,11 @@ function renderNav() {
     ['sheets', 'Route Sheets', c.ready || null, ''],
     ['associates', 'Associates', S.associatesMeta ? S.associatesMeta.count : null, ''],
     ['history', 'History', S.runs.length || null, ''],
+    ['email', 'Email settings', S.email.problem ? 'Set up' : null, 'warn'],
   ];
   $('nav').replaceChildren(...items.map(([id, label, count, tone]) =>
-    h('button', { class: `nav-item ${ui.view === id ? 'active' : ''}`, onclick: () => go(id) },
-      h('span', {}, label), count != null ? h('span', { class: `nav-count ${id === 'distribute' ? tone : ''}` }, count) : null)));
+    h('button', { class: `nav-item ${ui.view === id ? 'active' : ''}`, onclick: () => (id === 'email' ? openEmailSettings() : go(id)) },
+      h('span', {}, label), count != null ? h('span', { class: `nav-count ${id === 'distribute' || id === 'email' ? tone : ''}` }, count) : null)));
 }
 
 function renderTopActions() {
@@ -95,7 +96,7 @@ function renderTopActions() {
   $('topActions').replaceChildren(
     h('button', { class: 'btn', onclick: () => call('newRun').then(() => go('distribute')) }, 'New run'),
     h('button', {
-      class: 'btn primary',
+      class: 'btn',
       disabled: !c.ready,
       title: 'Save an Outlook email draft and a PDF for every route that is ready, plus a summary report',
       onclick: async () => {
@@ -103,7 +104,52 @@ function renderTopActions() {
         if (r.ok && r.result) toast(`Saved ${r.result.drafts} email drafts, the PDFs, and a summary to ${r.result.folder}`, 'ok');
       },
     }, `Export all (${c.ready})`),
+    h('button', {
+      class: 'btn primary',
+      disabled: !!ui.sending || !S.email.unsent,
+      title: S.email.problem
+        ? 'Set up email in Email settings to send route sheets straight from the app'
+        : 'Email every ready route sheet that is not marked as sent yet, each to its own driver',
+      onclick: emailAll,
+    }, ui.sending ? `Sending ${ui.sending.done} of ${ui.sending.total}…` : `Email all (${S.email.unsent})`),
   );
+}
+
+// ---------- sending email ----------
+function reportSend(res) {
+  const n = res.sent.length;
+  const details = [
+    ...res.failed.map((f) => `${f.routeCode} not sent: ${f.error}`),
+    ...res.skipped.map((x) => `${x.routeCode} skipped: ${x.reason}`),
+  ];
+  const msg = `Emailed ${n} route sheet${n === 1 ? '' : 's'}${res.failed.length ? `. ${res.failed.length} could not be sent` : ''}.`;
+  toast(msg, res.failed.length ? 'error' : 'ok', details);
+}
+
+function needsEmailSetup() {
+  if (!S.email.problem) return false;
+  toast(`Set up email first: ${S.email.problem}`, 'error');
+  openEmailSettings();
+  return true;
+}
+
+async function emailAll() {
+  if (needsEmailSetup()) return;
+  const r = await call('emailAll');
+  ui.sending = null;
+  render();
+  if (r.ok && r.result) reportSend(r.result);
+}
+
+async function sendOne(routeCode) {
+  if (needsEmailSetup()) return;
+  const r = await call('sendEmail', routeCode);
+  ui.sending = null;
+  render();
+  if (r.ok && r.result) {
+    const to = S.run.sent[routeCode] && S.run.sent[routeCode].to;
+    toast(`Emailed ${routeCode}${to && to.length ? ` to ${to.join(', ')}` : ''}.`, 'ok');
+  }
 }
 
 // ---------- Distribute ----------
@@ -396,7 +442,13 @@ function sheetDetail(r) {
         h('div', { class: 'route-meta' }, [s.station, s.dateLabel, s.cycle, s.waveTime].filter(Boolean).join(' · '))),
       recipient),
     h('div', { class: 'toolbar' },
-      act('Copy for email', async () => { const x = await call('copyEmail', r.routeCode); if (x.ok) toast('Copied. Paste into a new email (Ctrl+V). The tables keep their formatting.', 'ok'); }, { ...needReady, primary: ready }),
+      act(ui.sending ? 'Sending…' : 'Send email', () => sendOne(r.routeCode), {
+        disabled: !ready || noEmail || !!ui.sending,
+        primary: ready && !noEmail && !S.email.problem,
+        title: !ready ? needReady.title : noEmail ? 'No email address is on file for this driver'
+          : S.email.problem ? 'Set up email in Email settings first' : `Sends this route sheet with its PDF page from ${S.email.fromAddress}`,
+      }),
+      act('Copy for email', async () => { const x = await call('copyEmail', r.routeCode); if (x.ok) toast('Copied. Paste into a new email (Ctrl+V). The tables keep their formatting.', 'ok'); }, { ...needReady, primary: ready && (noEmail || !!S.email.problem) }),
       act('Open email draft', () => call('openDraft', r.routeCode), { ...needReady, title: ready ? 'Opens a ready-to-send draft in Outlook with the PDF page attached' : needReady.title }),
       act('Copy + open mail app', async () => { const x = await call('openMailApp', r.routeCode); if (x.ok) toast('Your mail app is opening with the address and subject. Paste the copied sheet into the body.', 'ok'); }, needReady),
       act('Save PDF page', async () => { const x = await call('savePdf', r.routeCode); if (x.ok && x.result) toast(`Saved ${x.result}`, 'ok'); }),
@@ -405,7 +457,8 @@ function sheetDetail(r) {
       ready ? (sent
         ? h('span', { class: 'toolbar' }, badge(`✓ ${SENT_LABEL[sent.how] || 'Sent'} ${fmtDateTime(sent.at)}`, 'blue'), h('button', { class: 'link', onclick: () => call('markSent', r.routeCode, null) }, 'Undo'))
         : act('Mark as sent', () => call('markSent', r.routeCode, 'manual'))) : null),
-    noEmail ? h('div', { class: 'callout warn' }, 'No email address is on file for this driver. Use "Copy for email" and send it another way, or add their email to the Associate Data and import it again.') : null);
+    noEmail ? h('div', { class: 'callout warn' }, 'No email address is on file for this driver. Use "Copy for email" and send it another way, or add their email to the Associate Data and import it again.') : null,
+    ready && !noEmail && S.email.problem ? h('div', { class: 'callout' }, h('div', {}, 'To send route sheets straight from the app, set up email once.'), h('button', { class: 'btn small', onclick: openEmailSettings }, 'Set up email')) : null);
 
   const check = s.checkOk
     ? h('div', { style: 'color:var(--green);font-size:13px' }, `✓ Verified: ${s.bagCount} bags, ${s.overflowCount} overflow packages, ${s.totalPackages} total all add up`)
@@ -476,6 +529,92 @@ function viewHistory() {
           h('button', { class: 'btn small danger', onclick: () => call('deleteRun', r.id) }, 'Delete')))))) : h('div', { class: 'empty' }, 'No saved runs yet.')));
 }
 
+// ---------- Email settings ----------
+async function openEmailSettings() {
+  const r = await api.emailSettings();
+  if (r.ok) {
+    ui.emailSettings = r.result;
+    ui.emailDraft = { ...r.result, password: '', testTo: (ui.emailDraft && ui.emailDraft.testTo) || '' };
+  } else {
+    toast(r.error, 'error');
+  }
+  go('email');
+}
+
+async function saveEmail(extra = {}, { quiet = false } = {}) {
+  const d = ui.emailDraft;
+  const r = await call('saveEmailSettings', { ...d, ...extra });
+  if (r.ok) {
+    ui.emailSettings = r.result;
+    ui.emailDraft = { ...r.result, password: '', testTo: d.testTo };
+    render();
+    if (!quiet) toast(r.result.problem ? `Saved. Still needed: ${r.result.problem}` : 'Email settings saved. You can send route sheets now.', r.result.problem ? '' : 'ok');
+  }
+  return r;
+}
+
+async function sendTest() {
+  const saved = await saveEmail({}, { quiet: true });
+  if (!saved.ok) return;
+  if (saved.result.problem) return toast(saved.result.problem, 'error');
+  ui.testing = true;
+  render();
+  const r = await call('testEmail', ui.emailDraft.testTo || '');
+  ui.testing = false;
+  render();
+  if (r.ok) toast(`Settings saved and a test email was sent to ${r.result}. Check that inbox (and its spam folder).`, 'ok');
+}
+
+function viewEmail() {
+  const s = ui.emailSettings;
+  const d = ui.emailDraft;
+  if (!s || !d) return h('div', { class: 'empty' }, 'Loading email settings…');
+  const field = (key, label, hint, props = {}) => h('label', { class: 'field' },
+    h('span', { class: 'field-label' }, label),
+    h('input', { class: 'input', value: d[key] ?? '', oninput: (e) => { d[key] = e.target.value; }, ...props }),
+    hint ? h('span', { class: 'field-hint' }, hint) : null);
+
+  const status = s.problem
+    ? h('div', { class: 'callout warn' }, h('div', {}, h('b', {}, 'Not set up yet. '), s.problem))
+    : h('div', { class: 'callout ok' }, h('div', {}, h('b', {}, 'Email is set up. '), `Route sheets are sent from ${s.fromAddress}.`));
+
+  return h('div', { class: 'email-view' },
+    h('div', { class: 'section-head' }, h('div', {},
+      h('h2', {}, 'Email settings'),
+      h('p', {}, 'Send each driver their route sheet straight from the app, using a Gmail account and a Gmail App Password.'))),
+    status,
+    s.canStorePassword ? null : h('div', { class: 'callout warn', style: 'margin-top:12px' }, "This computer can't store passwords securely, so an App Password can't be saved here."),
+    h('div', { class: 'email-grid section' },
+      h('div', { class: 'panel form' },
+        field('fromAddress', 'Gmail address to send from', 'Drivers see this as the sender. It must be the Google account that made the App Password.', { type: 'email', placeholder: 'dispatch@gmail.com' }),
+        field('fromName', 'Sender name (optional)', 'Shown next to the address, for example "Dispatch – XYZ1".', { placeholder: 'Dispatch' }),
+        field('password', 'App Password', s.hasPassword
+          ? 'Saved and encrypted. Leave this blank to keep it, or type a new one to replace it.'
+          : 'The 16-letter App Password from Google (not your normal password).', { type: 'password', autocomplete: 'off', placeholder: s.hasPassword ? '•••• •••• •••• ••••' : 'abcd efgh ijkl mnop' }),
+        s.hasPassword ? h('div', {}, h('button', { class: 'link', onclick: () => saveEmail({ password: '', clearPassword: true }) }, 'Remove saved App Password')) : null,
+        field('bcc', 'Send me a copy (optional)', 'Every route sheet email is also BCC\'d to this address, so you have a record.', { type: 'email', placeholder: 'you@example.com' }),
+        h('details', {},
+          h('summary', { class: 'faint', style: 'cursor:pointer' }, 'Advanced: other email providers'),
+          h('div', { class: 'form', style: 'padding:12px 0 0' },
+            field('smtpHost', 'Mail server (SMTP)', 'Gmail: smtp.gmail.com', { placeholder: 'smtp.gmail.com' }),
+            field('smtpPort', 'Port', 'Gmail: 587. Use 465 only if your provider says so.', { type: 'number', min: 1, max: 65535 }),
+            field('username', 'Login name (optional)', 'Leave blank to log in with the address above.', {}))),
+        h('div', { class: 'toolbar', style: 'margin-top:4px' },
+          h('button', { class: 'btn primary', onclick: () => saveEmail() }, 'Save'),
+          h('span', { style: 'flex:1' }),
+          h('input', { class: 'input', style: 'width:220px', type: 'email', placeholder: s.fromAddress || 'Send test to…', value: d.testTo || '', oninput: (e) => { d.testTo = e.target.value; } }),
+          h('button', { class: 'btn', disabled: ui.testing, onclick: sendTest }, ui.testing ? 'Sending test…' : 'Send test email'))),
+      h('div', { class: 'panel facts' },
+        h('div', { class: 'question' }, 'Getting a Gmail App Password'),
+        h('ol', { class: 'steps' },
+          h('li', {}, 'Sign in to the Gmail account you will send from.'),
+          h('li', {}, 'Turn on 2-Step Verification: Google Account → Security.'),
+          h('li', {}, 'Open ', h('a', { href: 'https://myaccount.google.com/apppasswords', target: '_blank' }, 'myaccount.google.com/apppasswords'), ', type a name like "Route Sheets" and click Create.'),
+          h('li', {}, 'Copy the 16-letter password Google shows, paste it here, and click Save.')),
+        h('div', { class: 'faint', style: 'font-size:12.5px' }, 'Already use the Weekly Performance App? You can use the same App Password, but you have to type it in here once.'),
+        h('div', { class: 'faint', style: 'font-size:12.5px' }, 'The password is encrypted and only works for your Windows account on this computer. Gmail allows about 500 emails a day.'))));
+}
+
 // ---------- theme, drag & drop, boot ----------
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
@@ -527,6 +666,10 @@ function renderUpdate(u) {
   box.replaceChildren(...kids, h('div', { class: 'version' }, `Version ${appVersion}`));
 }
 api.onUpdateStatus(renderUpdate);
+api.onEmailProgress((p) => {
+  ui.sending = p;
+  if (S) renderTopActions();
+});
 
 (async function boot() {
   const info = await api.appInfo();

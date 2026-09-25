@@ -1,6 +1,6 @@
 'use strict';
 const electron = require('electron');
-const { app, BrowserWindow, ipcMain, dialog, clipboard, shell, nativeTheme } = electron;
+const { app, BrowserWindow, ipcMain, dialog, clipboard, shell, nativeTheme, safeStorage } = electron;
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -157,6 +157,49 @@ function registerIpc() {
     return out;
   });
 
+  handle('emailSettings', () => service.emailSettings());
+  handle('saveEmailSettings', (input) => service.saveEmailSettings(input));
+  handle('testEmail', (to) => service.sendTestEmail(to));
+
+  const SENT_HOW = { emailed: 'Emailed', copied: 'Copied', draft: 'Draft opened', 'mail-app': 'Mail app opened', manual: 'Marked sent' };
+  const progress = (p) => { if (win && !win.isDestroyed()) win.webContents.send('email-progress', p); };
+
+  handle('sendEmail', async (routeCode) => {
+    const sent = service.run.sent[routeCode];
+    if (sent) {
+      const r = await dialog.showMessageBox(win, {
+        type: 'question', buttons: ['Send again', 'Cancel'], defaultId: 1, cancelId: 1,
+        message: `${routeCode} is already marked as sent. Send it again?`,
+        detail: `${SENT_HOW[sent.how] || 'Marked sent'} on ${new Date(sent.at).toLocaleString()}. The driver will get a second email.`,
+      });
+      if (r.response !== 0) return null;
+    }
+    const out = await service.emailRoutes([routeCode], progress);
+    if (out.skipped.length) throw new Error(out.skipped[0].reason);
+    if (out.failed.length) throw new Error(`${routeCode} was not sent: ${out.failed[0].error}`);
+    return out;
+  });
+
+  handle('emailAll', async () => {
+    const codes = service.unsentRoutes();
+    const ready = service.distribution().routes.filter((r) => r.state === 'ready');
+    const alreadySent = ready.filter((r) => service.run.sent[r.routeCode]).length;
+    const cantSend = ready.filter((r) => !service.run.sent[r.routeCode] && service.sendProblem(r)).length;
+    if (!codes.length) throw new Error(alreadySent ? 'Every route sheet that is ready is already marked as sent.' : 'No route sheets are ready to email.');
+    const left = [
+      alreadySent ? `${alreadySent} already marked as sent` : null,
+      cantSend ? `${cantSend} with no usable email address` : null,
+    ].filter(Boolean);
+    const r = await dialog.showMessageBox(win, {
+      type: 'question', buttons: [`Send ${codes.length} emails`, 'Cancel'], defaultId: 1, cancelId: 1,
+      message: `Email ${codes.length} route sheet${codes.length === 1 ? '' : 's'} now?`,
+      detail: `Each driver gets their own email from ${service.emailConfig().fromAddress} with their route sheet and its PDF page.`
+        + (left.length ? `\n\nLeft out: ${left.join(', ')}.` : ''),
+    });
+    if (r.response !== 0) return null;
+    return service.emailRoutes(codes, progress);
+  });
+
   handle('setTheme', (theme) => {
     store.setSettings({ theme });
     nativeTheme.themeSource = theme === 'light' ? 'light' : 'dark';
@@ -171,7 +214,15 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   store = new Store(path.join(app.getPath('userData'), 'data'));
-  service = new Service(store);
+  // The email App Password is encrypted with Electron safeStorage (Windows DPAPI, tied to this
+  // Windows user), so it is never written to settings.json in plain text.
+  service = new Service(store, {
+    secrets: {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+      decrypt: (blob) => safeStorage.decryptString(Buffer.from(blob, 'base64')),
+    },
+  });
   registerIpc();
   createWindow();
   updater.init((status) => {

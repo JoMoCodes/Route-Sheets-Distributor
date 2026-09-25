@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
+    "nodemailer": "^10.0.10",
     "papaparse": "^5.7.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
