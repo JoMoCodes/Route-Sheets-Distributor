@@ -473,3 +473,17 @@ test('Output folder: changing it moves the saved runs, and the app keeps using i
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------- display (text size, contrast) ----------
+const { normalizeDisplay, zoomFor, stepTextSize } = require('../src/core/display');
+
+test('Display: defaults, text size steps stop at the ends, unknown values are ignored', () => {
+  assert.deepEqual(normalizeDisplay({}), { theme: 'dark', textSize: 'normal', contrast: 'normal' });
+  assert.deepEqual(normalizeDisplay({ theme: 'light', textSize: 'huge', contrast: 'high', outputDir: 'x' }), { theme: 'light', textSize: 'normal', contrast: 'high' });
+  assert.equal(stepTextSize('normal', 1), 'large');
+  assert.equal(stepTextSize('normal', -1), 'normal');
+  assert.equal(stepTextSize('largest', 1), 'largest');
+  assert.equal(stepTextSize('bogus', 1), 'large');
+  assert.equal(zoomFor('normal'), 1);
+  assert.ok(zoomFor('largest') > zoomFor('larger'));
+});
