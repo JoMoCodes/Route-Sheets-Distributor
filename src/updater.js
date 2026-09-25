@@ -57,7 +57,9 @@ function check() {
 }
 
 function install() {
-  if (autoUpdater && status.state === 'ready') autoUpdater.quitAndInstall(false, true);
+  // Silent: the update installs in the background into the same place (same "all users" or
+  // "only me" choice, same shortcuts) with no setup wizard, then the app reopens.
+  if (autoUpdater && status.state === 'ready') autoUpdater.quitAndInstall(true, true);
 }
 
 module.exports = { init, check, install, getStatus: () => status };
