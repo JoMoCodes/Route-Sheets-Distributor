@@ -6,6 +6,14 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.4.0',
+    items: [
+      'After you import the route sheet PDF, a new "Pad for each wave" box on the Distribute page lists every wave time. Type the pad number next to each one.',
+      'The pad shows in a bright blue box near the top of every route sheet email, so drivers can\'t miss it. The email subject line says it too.',
+      'Each route\'s pad also shows in the All routes list, on the Route Sheets page, and in the summary files from Export all. Pads are saved with the day\'s run.',
+    ],
+  },
+  {
     version: '1.3.0',
     items: [
       'New "How to use" page in the left menu. It walks you through each day step by step, explains the colors, and lists what to do when something goes wrong.',

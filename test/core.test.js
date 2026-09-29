@@ -487,3 +487,76 @@ test('Display: defaults, text size steps stop at the ends, unknown values are ig
   assert.equal(zoomFor('normal'), 1);
   assert.ok(zoomFor('largest') > zoomFor('larger'));
 });
+
+// ---------- pads for each wave ----------
+test('Distribute: lists each wave time in clock order with its route count and pad', () => {
+  const d = distribute({ sheets: parsed.sheets, routes: routes(), associates: associates(), wavePads: { '09:55 AM': '2' } });
+  assert.deepEqual(d.waves, [
+    { waveTime: '09:50 AM', routes: 1, pad: null },
+    { waveTime: '09:55 AM', routes: 7, pad: '2' },
+  ]);
+  assert.equal(byCode(d, 'CX101').sheet.pad, null);
+  assert.equal(byCode(d, 'CX102').sheet.pad, '2');
+  assert.equal(byCode(d, 'CX999').sheet, null, 'a route with no page has no sheet, so no pad');
+});
+
+test('Email: the pad shows as its own box and in the subject only when one is set', () => {
+  const { renderEmailText, subjectFor } = require('../src/core/emailRender');
+  const plain = parsed.sheets[0];
+  assert.ok(!renderEmailHtml(plain).includes('Pad #'));
+  assert.ok(!subjectFor(plain).includes('Pad'));
+
+  const s = { ...plain, pad: '3 <b>' };
+  const html = renderEmailHtml(s, { name: 'Alice Marie Driver' });
+  assert.ok(html.includes('Pad #'));
+  assert.ok(html.includes('3 &lt;b&gt;'), 'the pad is escaped like every other value');
+  assert.ok(subjectFor(s).endsWith(' · 09:50 AM · Pad 3 <b>'));
+  assert.match(renderEmailText(s), /\r\nPAD #: 3 <b>\r\n/);
+});
+
+test('Service: pads are saved with the run, trimmed, cleared with a blank, and put on the email and summary', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(path.join(dir, 'data'));
+    const sv = new Service(store);
+    fs.writeFileSync(path.join(dir, 'sheets.pdf'), pdfBuffer);
+    fs.writeFileSync(path.join(dir, 'AssociateData.csv'), ASSOCIATES_CSV);
+    fs.writeFileSync(path.join(dir, 'Routes.csv'), ROUTES_CSV);
+    await sv.importFile(path.join(dir, 'sheets.pdf'));
+    await sv.importFile(path.join(dir, 'AssociateData.csv'));
+    await sv.importFile(path.join(dir, 'Routes.csv'));
+
+    assert.equal(sv.setWavePad('09:50 AM', '  4 '), '4');
+    assert.equal(sv.setWavePad('09:55 AM', 'B12'), 'B12');
+    assert.throws(() => sv.setWavePad('', '1'), /wave time/);
+    assert.deepEqual(sv.state().run.wavePads, { '09:50 AM': '4', '09:55 AM': 'B12' });
+    assert.deepEqual(sv.state().distribution.waves.map((w) => w.pad), ['4', 'B12']);
+
+    const reopened = new Service(store);
+    reopened.loadRun(sv.run.id);
+    assert.deepEqual(reopened.wavePads(), { '09:50 AM': '4', '09:55 AM': 'B12' });
+    assert.equal(reopened.sheet('CX101').pad, '4');
+    assert.match(reopened.preview('CX101').subject, /Pad 4$/);
+    assert.ok(reopened.preview('CX101').html.includes('Pad #'));
+    const e = await reopened.emailFor('CX101');
+    assert.match(e.text, /PAD #: 4/);
+
+    // Re-importing the same PDF keeps the pads; a run saved before pads existed just has none.
+    await reopened.importFile(path.join(dir, 'sheets.pdf'));
+    assert.equal(reopened.sheet('CX101').pad, '4');
+    delete reopened.run.wavePads;
+    assert.deepEqual(reopened.wavePads(), {});
+    assert.equal(reopened.sheet('CX101').pad, null);
+
+    assert.equal(sv.setWavePad('09:50 AM', '   '), null);
+    assert.deepEqual(sv.wavePads(), { '09:55 AM': 'B12' });
+    const out = await sv.exportAll(path.join(dir, 'out'));
+    const csv = fs.readFileSync(path.join(out.folder, 'Distribution summary.csv'), 'utf8');
+    assert.match(csv, /^"Route","Staging","Wave","Pad",/);
+    assert.match(csv, /"CX102","STG\.A2\.1","09:55 AM","B12"/);
+    assert.match(csv, /"CX101","STG\.A1\.1","09:50 AM",""/);
+    assert.match(fs.readFileSync(path.join(out.folder, 'Distribution summary.html'), 'utf8'), /<th>Pad<\/th>/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

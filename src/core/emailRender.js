@@ -21,7 +21,7 @@ function firstName(name) {
 
 function subjectFor(sheet) {
   const date = sheet.dateLabel ? titleCase(sheet.dateLabel) : sheet.date || '';
-  return `Route Sheet: ${sheet.routeCode} · ${sheet.staging || ''} · ${date}${sheet.waveTime ? ' · ' + sheet.waveTime : ''}`;
+  return `Route Sheet: ${sheet.routeCode} · ${sheet.staging || ''} · ${date}${sheet.waveTime ? ' · ' + sheet.waveTime : ''}${sheet.pad ? ' · Pad ' + sheet.pad : ''}`;
 }
 
 function titleCase(s) {
@@ -34,7 +34,7 @@ const head = 'padding:6px 10px;white-space:nowrap;border-bottom:2px solid #1b243
 const blank = '<span style="color:#b3261e;font-style:italic;">blank on sheet</span>';
 
 /**
- * @param {object} sheet full parsed sheet (with bags/overflow)
+ * @param {object} sheet full parsed sheet (with bags/overflow), plus `pad` when the user chose one for its wave
  * @param {{name?:string}} [recipient]
  */
 function renderEmailHtml(sheet, recipient) {
@@ -46,6 +46,15 @@ function renderEmailHtml(sheet, recipient) {
         <div style="font-size:11px;color:#5b6675;text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
         <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:#1b2430;margin-top:2px;">${esc(value || '—')}</div>
       </td>`;
+
+  // The pad is the one thing a driver must not miss, so it gets the only colored box in the email.
+  const padBox = sheet.pad ? `
+    <tr>
+      <td colspan="2" style="padding:10px 14px;background:#1e6fd9;border:1px solid #185cc0;border-radius:6px;color:#ffffff;">
+        <div style="font-size:11px;color:#dbe8ff;text-transform:uppercase;letter-spacing:.05em;">Pad #</div>
+        <div style="font-size:26px;font-weight:800;line-height:1.15;margin-top:2px;">${esc(sheet.pad)}</div>
+      </td>
+    </tr>` : '';
 
   const bagRows = sheet.bags.map((b) => `
         <tr>
@@ -74,7 +83,7 @@ function renderEmailHtml(sheet, recipient) {
   ${greet}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;">
     <tr>${infoBox('Route', sheet.routeCode, true)}${infoBox('Staging', sheet.staging, true)}</tr>
-    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date)}</tr>
+    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date)}</tr>${padBox}
   </table>
   <p style="margin:8px 6px 0;font-size:13px;color:#5b6675;">${esc([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '))}</p>
 
@@ -106,6 +115,7 @@ function renderEmailText(sheet, recipient) {
   if (recipient && recipient.name) lines.push(`Hi ${firstName(recipient.name)}, here is your route sheet for ${date}.`, '');
   lines.push(`ROUTE: ${sheet.routeCode}    STAGING: ${sheet.staging}`);
   lines.push(`WAVE: ${sheet.waveTime}    DATE: ${date}`);
+  if (sheet.pad) lines.push(`PAD #: ${sheet.pad}`);
   lines.push([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '), '');
   lines.push(`${sheet.bagCount} BAGS`);
   const w = Math.max(9, ...sheet.bags.map((b) => b.sortZone.length));
