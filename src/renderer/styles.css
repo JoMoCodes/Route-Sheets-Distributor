@@ -128,6 +128,19 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .stat.red { border-left-color: var(--red); } .stat.red .n { color: var(--red); }
 .stat.gray .n { color: var(--muted); }
 
+/* Pad for each wave */
+.waves { padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; border-left: 4px solid var(--accent); }
+.wave { display: flex; align-items: center; gap: 18px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); min-width: 280px; cursor: text; }
+.wave.set { border-color: color-mix(in srgb, var(--green) 55%, var(--border)); }
+.wave-time { font-size: 18px; font-weight: 700; white-space: nowrap; }
+.wave-routes { color: var(--muted); font-size: 12.5px; }
+.pad-field { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.pad-label { font-weight: 600; color: var(--muted); font-size: 13px; white-space: nowrap; }
+.pad-input { width: 76px; text-align: center; font-weight: 700; font-size: 16px; padding: 6px 8px; }
+.pad-input::placeholder { color: var(--faint); font-weight: 500; }
+.pad-tag { display: inline-block; margin-top: 3px; padding: 1px 8px; border-radius: 999px; background: rgba(78, 161, 255, .14); color: var(--accent); font-size: 12px; font-weight: 700; }
+.pad-badge { display: inline-block; margin-left: 10px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 700; vertical-align: middle; }
+
 /* Badges */
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; white-space: nowrap; }
 .badge.green { background: var(--green-bg); color: var(--green); }

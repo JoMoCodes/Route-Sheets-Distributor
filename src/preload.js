@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   pathForFile: (file) => webUtils.getPathForFile(file),
   setDecision: call('setDecision'),
   acceptSuggestions: call('acceptSuggestions'),
+  setWavePad: call('setWavePad'),
   markSent: call('markSent'),
   loadRun: call('loadRun'),
   newRun: call('newRun'),

@@ -124,6 +124,7 @@ function registerIpc() {
 
   handle('setDecision', (routeCode, decision) => service.setDecision(routeCode, decision));
   handle('acceptSuggestions', () => service.acceptSuggestions());
+  handle('setWavePad', (waveTime, pad) => service.setWavePad(waveTime, pad));
   handle('markSent', (routeCode, how) => service.markSent(routeCode, how));
   handle('loadRun', (id) => service.loadRun(id));
   handle('newRun', () => service.newRun());

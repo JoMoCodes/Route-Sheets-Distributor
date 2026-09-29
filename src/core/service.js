@@ -79,7 +79,7 @@ class Service {
   }
 
   emptyRun() {
-    return { id: DRAFT_ID, station: null, date: null, cycle: null, createdAt: new Date().toISOString(), pdf: null, sheets: [], routesFile: null, routes: [], decisions: {}, sent: {} };
+    return { id: DRAFT_ID, station: null, date: null, cycle: null, createdAt: new Date().toISOString(), pdf: null, sheets: [], routesFile: null, routes: [], decisions: {}, sent: {}, wavePads: {} };
   }
 
   persist() {
@@ -94,7 +94,29 @@ class Service {
   }
 
   distribution() {
-    return distribute({ sheets: this.run.sheets, routes: this.run.routes, associates: this.associates(), decisions: this.run.decisions });
+    return distribute({ sheets: this.run.sheets, routes: this.run.routes, associates: this.associates(), decisions: this.run.decisions, wavePads: this.wavePads() });
+  }
+
+  /** Pad number for each wave time in this run, e.g. { '09:50 AM': '3' }. Runs saved before pads existed have none. */
+  wavePads() {
+    return this.run.wavePads || {};
+  }
+
+  padFor(waveTime) {
+    return (waveTime && this.wavePads()[waveTime]) || null;
+  }
+
+  /** Sets (or, with an empty value, clears) the pad for every route sheet with this wave time. */
+  setWavePad(waveTime, pad) {
+    const wave = String(waveTime || '').trim();
+    if (!wave) throw new Error('That wave time is not in this run.');
+    const value = String(pad ?? '').replace(/\s+/g, ' ').trim().slice(0, 10);
+    const pads = { ...this.wavePads() };
+    if (value) pads[wave] = value;
+    else delete pads[wave];
+    this.run.wavePads = pads;
+    this.persist();
+    return value || null;
   }
 
   state() {
@@ -129,6 +151,7 @@ class Service {
         checkFailures: this.run.sheets.filter((s) => !s.check.ok).map((s) => s.routeCode),
         sent: this.run.sent,
         decisions: this.run.decisions,
+        wavePads: this.wavePads(),
       },
       distribution: this.distribution(),
       email: { problem: this.emailProblem(), fromAddress: this.emailConfig().fromAddress, sending: this.sending, unsent: this.unsentRoutes().length },
@@ -281,8 +304,10 @@ class Service {
     return this.store.setOutputDir(dir);
   }
 
+  /** The parsed route sheet page, with the pad chosen for its wave time (shown on the email). */
   sheet(routeCode) {
-    return this.run.sheets.find((s) => s.routeCode === routeCode) || null;
+    const s = this.run.sheets.find((x) => x.routeCode === routeCode);
+    return s ? { ...s, pad: this.padFor(s.waveTime) } : null;
   }
 
   routeResult(routeCode) {
@@ -510,6 +535,7 @@ function renderSummaryHtml(run, dist) {
     `<b>${esc(r.routeCode)}</b>`,
     esc(r.sheet?.staging || '—'),
     esc(r.sheet?.waveTime || '—'),
+    esc(r.sheet?.pad || '—'),
     esc(r.sheet?.totalPackages ?? '—'),
     esc(r.listed.map((c) => `${c.rosterName || c.routesName} (${c.transporterId || 'no ID'})`).join(', ') || '—'),
     esc(r.recipients.map((p) => `${p.name}${p.email ? ` <${p.email}>` : ' (no email)'}`).join(', ') || '—'),
@@ -527,15 +553,15 @@ td,th{border-bottom:1px solid #e3e7ec;padding:6px 8px;text-align:left;font-size:
 <h2>People who will not get a route sheet (${dist.people.notReceiving.length})</h2>
 ${missing ? `<table><tr><th>Name</th><th>Transporter ID</th><th>Route(s)</th><th>Why</th></tr>${missing}</table>` : '<p>Everyone listed on the routes file gets a route sheet.</p>'}
 <h2>All routes</h2>
-<table><tr><th>Route</th><th>Staging</th><th>Wave</th><th>Pkgs</th><th>Listed on routes file</th><th>Sending to</th><th>Status</th><th>Notes</th></tr>${routes}</table>
+<table><tr><th>Route</th><th>Staging</th><th>Wave</th><th>Pad</th><th>Pkgs</th><th>Listed on routes file</th><th>Sending to</th><th>Status</th><th>Notes</th></tr>${routes}</table>
 </body></html>`;
 }
 
 function renderSummaryCsv(dist) {
   const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [['Route', 'Staging', 'Wave', 'Total Packages', 'Listed Transporter IDs', 'Recipient', 'Recipient Transporter ID', 'Recipient Email', 'Status', 'Reason'].map(q).join(',')];
+  const lines = [['Route', 'Staging', 'Wave', 'Pad', 'Total Packages', 'Listed Transporter IDs', 'Recipient', 'Recipient Transporter ID', 'Recipient Email', 'Status', 'Reason'].map(q).join(',')];
   for (const r of dist.routes) {
-    lines.push([r.routeCode, r.sheet?.staging, r.sheet?.waveTime, r.sheet?.totalPackages, r.listed.map((c) => c.transporterId).join(' | '),
+    lines.push([r.routeCode, r.sheet?.staging, r.sheet?.waveTime, r.sheet?.pad, r.sheet?.totalPackages, r.listed.map((c) => c.transporterId).join(' | '),
       r.recipients.map((p) => p.name).join(' | '), r.recipients.map((p) => p.transporterId).join(' | '), r.recipients.map((p) => p.email).join(' | '),
       STATE_LABEL[r.state], r.headline].map(q).join(','));
   }

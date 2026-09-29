@@ -17,12 +17,13 @@ const STATES = {
   NO_SHEET: 'no-sheet', // route is on the routes file but has no PDF page
 };
 
-function summarizeSheet(s) {
+function summarizeSheet(s, pad = null) {
   if (!s) return null;
   return {
     pageNumber: s.pageNumber,
     staging: s.staging,
     waveTime: s.waveTime,
+    pad, // the pad the user chose for this sheet's wave time, or null
     serviceType: s.serviceType,
     dsp: s.dsp,
     station: s.station,
@@ -47,8 +48,9 @@ const person = (a) => ({ transporterId: a.transporterId, name: a.name, email: a.
  * @param {object[]} input.routes     from parseRoutes
  * @param {object[]} input.associates from parseAssociates
  * @param {Object<string,{recipients?:string[],skipped?:boolean}>} input.decisions keyed by route code
+ * @param {Object<string,string>} input.wavePads pad number for each wave time, e.g. { '09:50 AM': '3' }
  */
-function distribute({ sheets = [], routes = [], associates = [], decisions = {} }) {
+function distribute({ sheets = [], routes = [], associates = [], decisions = {}, wavePads = {} }) {
   const roster = new Map(associates.map((a) => [a.transporterId, a]));
   const sheetByCode = new Map(sheets.map((s) => [s.routeCode, s]));
   const routeByCode = new Map(routes.map((r) => [r.routeCode, r]));
@@ -103,7 +105,7 @@ function distribute({ sheets = [], routes = [], associates = [], decisions = {} 
       routeCode,
       hasSheet: !!sheet,
       onRoutesFile: !!route,
-      sheet: summarizeSheet(sheet),
+      sheet: summarizeSheet(sheet, padFor(wavePads, sheet && sheet.waveTime)),
       listed,
       kind: !sheet ? 'no-sheet' : listed.length === 0 ? 'unassigned' : listed.length > 1 ? 'duplicate' : 'single',
       state: null,
@@ -186,16 +188,36 @@ function distribute({ sheets = [], routes = [], associates = [], decisions = {} 
 
   results.sort((a, b) => stateOrder(a.state) - stateOrder(b.state) || waveKey(a).localeCompare(waveKey(b)) || a.routeCode.localeCompare(b.routeCode, undefined, { numeric: true }));
 
-  return { routes: results, people: summarizePeople(results, roster), counts: countStates(results) };
+  return { routes: results, people: summarizePeople(results, roster), counts: countStates(results), waves: summarizeWaves(sheets, wavePads) };
+}
+
+function padFor(wavePads, waveTime) {
+  return (waveTime && wavePads && wavePads[waveTime]) || null;
+}
+
+/** Each wave time on the route sheets, earliest first, with how many routes it has and its pad. */
+function summarizeWaves(sheets, wavePads) {
+  const counts = new Map();
+  for (const s of sheets) {
+    if (!s.waveTime) continue;
+    counts.set(s.waveTime, (counts.get(s.waveTime) || 0) + 1);
+  }
+  return [...counts]
+    .map(([waveTime, routes]) => ({ waveTime, routes, pad: padFor(wavePads, waveTime) }))
+    .sort((a, b) => waveSortKey(a.waveTime).localeCompare(waveSortKey(b.waveTime)));
 }
 
 function stateOrder(s) {
   return [STATES.NEEDS_DECISION, STATES.EXCEPTION, STATES.NO_SHEET, STATES.READY, STATES.SKIPPED].indexOf(s);
 }
 function waveKey(r) {
-  if (!r.sheet || !r.sheet.waveTime) return '99';
-  const m = r.sheet.waveTime.match(/(\d+):(\d+)\s*([AP])M/i);
-  if (!m) return r.sheet.waveTime;
+  return waveSortKey(r.sheet && r.sheet.waveTime);
+}
+/** "09:50 AM" -> "09:50", "1:05 PM" -> "13:05", so wave times sort in clock order. */
+function waveSortKey(waveTime) {
+  if (!waveTime) return '99';
+  const m = String(waveTime).match(/(\d+):(\d+)\s*([AP])M/i);
+  if (!m) return String(waveTime);
   let h = Number(m[1]) % 12;
   if (m[3].toUpperCase() === 'P') h += 12;
   return `${String(h).padStart(2, '0')}:${m[2]}`;
@@ -261,4 +283,4 @@ function reasonNotReceiving(r, c) {
   }
 }
 
-module.exports = { distribute, STATES, summarizeSheet };
+module.exports = { distribute, STATES, summarizeSheet, summarizeWaves, waveSortKey };
