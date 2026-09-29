@@ -50,6 +50,7 @@ You can skip this: the copy and draft buttons below work without it.
 
 The boxes along the top count everything up for you. Then work down the page:
 
+- **Pad for each wave:** every wave time from the PDF, with a box to type its pad number. The pad goes in a blue box on every route sheet for that wave, so drivers know where to load.
 - **Ready to send:** a perfect match. Nothing to do.
 - **Choose who gets these route sheets:** the route lists two (or more) drivers, and you pick who gets the sheet. Click **Send to [name]** on the right person, or **Don't send**.
   - A green **★ Suggested** tag shows when the choice seems obvious. For example, the other driver is also listed on other routes.

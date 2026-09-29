@@ -70,10 +70,19 @@ function render() {
   const view = $('view');
   view.className = ui.view === 'sheets' ? 'flush' : '';
   const scroll = view.scrollTop;
+  // A box the user is typing in (marked data-focus) keeps the cursor after the page is redrawn.
+  const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.focus : null;
   view.replaceChildren(
     { distribute: viewDistribute, sheets: viewSheets, associates: viewAssociates, history: viewHistory, email: viewEmail, features: viewFeatures, help: viewHelp }[ui.view](),
   );
   if (ui.view !== 'sheets') view.scrollTop = scroll;
+  if (focused) {
+    const el = view.querySelector(`[data-focus="${CSS.escape(focused)}"]`);
+    if (el) {
+      el.focus();
+      if (typeof el.setSelectionRange === 'function') el.setSelectionRange(el.value.length, el.value.length);
+    }
+  }
 }
 
 function go(view, selected) {
@@ -190,6 +199,8 @@ function viewDistribute() {
       h('button', { class: 'btn', onclick: () => doImport('associates') }, 'Import Associate Data')));
   }
 
+  root.append(wavePadsSection());
+
   const decisions = byState('needs-decision');
   if (decisions.length) {
     const withSuggestion = decisions.filter((r) => r.suggestion).length;
@@ -243,6 +254,31 @@ function viewDistribute() {
 
   root.append(section('All routes', 'Click a route to open its route sheet.', null, allRoutesTable()));
   return root;
+}
+
+/**
+ * One box per wave time on the route sheets, with a place to type the pad it loads at. The pad
+ * goes on every route sheet email for that wave, so it sits near the top of Distribute.
+ */
+function wavePadsSection() {
+  const waves = S.distribution.waves;
+  if (!waves.length) return null;
+  const missing = waves.filter((w) => !w.pad).length;
+  return section(
+    'Pad for each wave',
+    'Type the pad number next to each wave time. It shows in a blue box on every route sheet for that wave, so drivers know where to load.',
+    missing ? badge(`${plural(missing, 'wave')} without a pad`, 'amber') : badge('Every wave has a pad', 'green'),
+    h('div', { class: 'panel waves' }, waves.map((w) => h('label', { class: `wave ${w.pad ? 'set' : ''}` },
+      h('div', {},
+        h('div', { class: 'wave-time' }, w.waveTime),
+        h('div', { class: 'wave-routes' }, plural(w.routes, 'route'))),
+      h('div', { class: 'pad-field' },
+        h('span', { class: 'pad-label' }, 'Pad #'),
+        h('input', {
+          class: 'input pad-input', value: w.pad || '', placeholder: '?', maxLength: 10, autocomplete: 'off',
+          'data-focus': `pad:${w.waveTime}`, 'aria-label': `Pad for the ${w.waveTime} wave`,
+          onchange: (e) => call('setWavePad', w.waveTime, e.target.value),
+        }))))));
 }
 
 function jumpTo(routeCode) {
@@ -331,7 +367,7 @@ async function doImport(kind) {
 function routeMeta(r) {
   const s = r.sheet;
   if (!s) return 'No route sheet page';
-  return [s.staging, s.waveTime, `${s.totalPackages} pkgs`, s.serviceType].filter(Boolean).join(' · ');
+  return [s.staging, s.waveTime, s.pad && `Pad ${s.pad}`, `${s.totalPackages} pkgs`, s.serviceType].filter(Boolean).join(' · ');
 }
 
 function candidateOption(r, c, { allowPick = true } = {}) {
@@ -411,7 +447,7 @@ function allRoutesTable() {
     h('tbody', {}, routes.map((r) => h('tr', { class: r.hasSheet ? 'clickable' : '', onclick: () => jumpTo(r.routeCode) },
       h('td', {}, h('b', {}, r.routeCode)),
       h('td', {}, r.sheet ? r.sheet.staging : '—'),
-      h('td', { style: 'white-space:nowrap' }, r.sheet ? r.sheet.waveTime : '—'),
+      h('td', { style: 'white-space:nowrap' }, r.sheet ? r.sheet.waveTime : '—', r.sheet && r.sheet.pad ? h('div', { class: 'pad-tag' }, `Pad ${r.sheet.pad}`) : null),
       h('td', { class: 'num' }, r.sheet ? r.sheet.bagCount : '—'),
       h('td', { class: 'num' }, r.sheet ? r.sheet.totalPackages : '—'),
       h('td', {}, r.listed.length ? r.listed.map((c) => h('div', {}, c.rosterName || c.routesName, ' ', h('span', { class: 'mono faint' }, c.transporterId))) : h('span', { class: 'faint' }, 'Not on routes file')),
@@ -486,7 +522,8 @@ function sheetDetail(r) {
 
   const head = h('div', { class: 'detail-head' },
     h('div', { class: 'detail-title' },
-      h('div', {}, h('div', { class: 'route-code', style: 'font-size:26px' }, r.routeCode, ' ', h('span', { class: 'muted', style: 'font-weight:500' }, s.staging)),
+      h('div', {}, h('div', { class: 'route-code', style: 'font-size:26px' }, r.routeCode, ' ', h('span', { class: 'muted', style: 'font-weight:500' }, s.staging),
+        s.pad ? h('span', { class: 'pad-badge' }, `Pad ${s.pad}`) : null),
         h('div', { class: 'route-meta' }, [s.station, s.dateLabel, s.cycle, s.waveTime].filter(Boolean).join(' · '))),
       recipient),
     h('div', { class: 'toolbar' },
@@ -515,7 +552,8 @@ function sheetDetail(r) {
   const side = h('div', { class: 'grid' },
     h('div', { class: 'panel facts' },
       h('div', { class: 'question' }, 'Route sheet'),
-      fact('Route', r.routeCode), fact('Staging', s.staging), fact('Wave', s.waveTime), fact('Date', s.dateLabel),
+      fact('Route', r.routeCode), fact('Staging', s.staging), fact('Wave', s.waveTime),
+      fact('Pad #', s.pad || (s.waveTime ? h('button', { class: 'link', onclick: () => go('distribute') }, 'Set on Distribute') : null)), fact('Date', s.dateLabel),
       fact('Service type', s.serviceType), fact('Bags', s.bagCount), fact('Overflow packages', s.overflowCount),
       fact('Total packages', s.totalPackages), fact('Commercial packages', s.commercialPackages), fact('PDF page', s.pageNumber), check),
     h('div', { class: 'panel facts' },
@@ -619,6 +657,7 @@ const HELP = {
     ['Download today\'s ', { b: 'route sheet PDF' }, ' (from Slack) and ', { b: 'Routes file' }, ' (from Cortex). The ', { b: '?' }, ' on each box shows you where.'],
     ['Open ', { go: 'distribute', text: 'Distribute' }, '. Click ', { b: 'Import…' }, ' on ', { b: 'Route Sheet PDF' }, ' and pick the PDF.'],
     ['Click ', { b: 'Import…' }, ' on ', { b: 'Routes File' }, ' and pick the Routes file. (Or drag both files onto the window at once.)'],
+    ['In ', { b: 'Pad for each wave' }, ', type the pad number next to each wave time. It goes on every route sheet for that wave.'],
     ['Look at the colored boxes at the top. Green is good. Yellow and red need you.'],
     ['Go down the page and make a choice for every yellow and red route. See ', { b: 'Making choices' }, ' below.'],
     ['Check ', { b: 'People who won\'t get a route sheet' }, '. Make sure nobody is left out by mistake.'],
