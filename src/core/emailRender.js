@@ -28,6 +28,16 @@ function titleCase(s) {
   return String(s).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
+const WEEKDAYS = { MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday' };
+
+/** The Date box's two lines: "FRI, SEP 25, 2026" becomes "Friday" above "Sep 25, 2026". */
+function dateLines(sheet) {
+  if (!sheet.dateLabel) return [sheet.date || ''];
+  const m = sheet.dateLabel.match(/^([A-Za-z]+),\s*(.+)$/);
+  if (!m) return [titleCase(sheet.dateLabel)];
+  return [WEEKDAYS[m[1].toUpperCase()] || titleCase(m[1]), titleCase(m[2])];
+}
+
 const FONT = "font-family:Segoe UI,Helvetica,Arial,sans-serif;";
 const cell = 'padding:6px 10px;border-bottom:1px solid #e3e7ec;font-size:14px;color:#1b2430;';
 const head = 'padding:6px 10px;white-space:nowrap;border-bottom:2px solid #1b2430;font-size:12px;color:#5b6675;text-transform:uppercase;letter-spacing:.04em;text-align:left;';
@@ -45,12 +55,15 @@ function renderEmailHtml(sheet, recipient) {
   const GRAY_BOX = { bg: '#f3f5f8', border: '#dde2e8', label: '#5b6675', value: '#1b2430' };
   const DATE_BOX = { bg: '#8b1a2b', border: '#6f1422', label: '#f6d8dd', value: '#ffffff' };
 
-  // Values stay on one line; only the date may wrap, on a narrow phone.
-  const infoBox = (label, value, { big = false, wrap = false, colors = GRAY_BOX } = {}) => `
+  // A value is one line, or a list of lines (the date); a line never wraps.
+  const infoBox = (label, value, { big = false, colors = GRAY_BOX } = {}) => {
+    const lines = [].concat(value).filter(Boolean);
+    return `
       <td style="padding:10px;background:${colors.bg};border:1px solid ${colors.border};border-radius:6px;text-align:center;vertical-align:middle;">
         <div style="font-size:11px;color:${colors.label};text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
-        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:${colors.value};margin-top:2px;${wrap ? '' : 'white-space:nowrap;'}">${esc(value || '—')}</div>
+        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:${colors.value};margin-top:2px;white-space:nowrap;">${lines.length ? lines.map(esc).join('<br>') : '—'}</div>
       </td>`;
+  };
 
   // The pad is the one thing a driver must not miss, so it gets the biggest box: a tall blue column
   // on the right, beside the route, staging, wave and date. Longer pads get a smaller number, and
@@ -90,7 +103,7 @@ function renderEmailHtml(sheet, recipient) {
   ${greet}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;">
     <tr>${infoBox('Route', sheet.routeCode, { big: true })}${infoBox('Staging', sheet.staging, { big: true })}${padBox}</tr>
-    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date, { wrap: true, colors: DATE_BOX })}</tr>
+    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', dateLines(sheet), { colors: DATE_BOX })}</tr>
   </table>
   <p style="margin:8px 6px 0;font-size:13px;color:#5b6675;">${esc([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '))}</p>
 
