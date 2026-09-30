@@ -28,6 +28,16 @@ function titleCase(s) {
   return String(s).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
 }
 
+const WEEKDAYS = { MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday' };
+
+/** The date in two parts: "FRI, SEP 25, 2026" becomes ["Friday", "Sep 25, 2026"]. The Date box stacks them. */
+function dateLines(sheet) {
+  if (!sheet.dateLabel) return [sheet.date || ''];
+  const m = sheet.dateLabel.match(/^([A-Za-z]+),\s*(.+)$/);
+  if (!m) return [titleCase(sheet.dateLabel)];
+  return [WEEKDAYS[m[1].toUpperCase()] || titleCase(m[1]), titleCase(m[2])];
+}
+
 const FONT = "font-family:Segoe UI,Helvetica,Arial,sans-serif;";
 const cell = 'padding:6px 10px;border-bottom:1px solid #e3e7ec;font-size:14px;color:#1b2430;';
 const head = 'padding:6px 10px;white-space:nowrap;border-bottom:2px solid #1b2430;font-size:12px;color:#5b6675;text-transform:uppercase;letter-spacing:.04em;text-align:left;';
@@ -38,23 +48,36 @@ const blank = '<span style="color:#b3261e;font-style:italic;">blank on sheet</sp
  * @param {{name?:string}} [recipient]
  */
 function renderEmailHtml(sheet, recipient) {
-  const date = sheet.dateLabel ? titleCase(sheet.dateLabel) : sheet.date || '';
-  const greet = recipient && recipient.name ? `<p style="margin:0 0 14px;font-size:15px;color:#1b2430;">Hi ${esc(firstName(recipient.name))}, here is your route sheet for ${esc(date)}.</p>` : '';
+  const date = dateLines(sheet);
+  const greet = recipient && recipient.name ? `<p style="margin:0 0 14px;font-size:15px;color:#1b2430;">Hi ${esc(firstName(recipient.name))}, here is your route sheet for <span style="white-space:nowrap;">${esc(date.join(', '))}.</span></p>` : '';
 
-  const infoBox = (label, value, big) => `
-      <td style="padding:10px 12px;background:#f3f5f8;border:1px solid #dde2e8;border-radius:6px;vertical-align:top;">
-        <div style="font-size:11px;color:#5b6675;text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
-        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:#1b2430;margin-top:2px;">${esc(value || '—')}</div>
+  // "Pad #" and "Date" are what a driver must not miss, so their labels are big, bold and white.
+  const BIG_LABEL = 'font-size:18px;font-weight:800;color:#ffffff;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;';
+
+  // Gray boxes, except the date: a maroon one with white writing, so drivers check it is the right day.
+  const GRAY_BOX = { bg: '#f3f5f8', border: '#dde2e8', labelStyle: 'font-size:11px;color:#5b6675;text-transform:uppercase;letter-spacing:.05em;', valueColor: '#1b2430' };
+  const DATE_BOX = { bg: '#8b1a2b', border: '#6f1422', labelStyle: BIG_LABEL, valueColor: '#ffffff' };
+
+  // A value is one line, or a list of lines (the date); a line never wraps.
+  const infoBox = (label, value, { big = false, box = GRAY_BOX } = {}) => {
+    const lines = [].concat(value).filter(Boolean);
+    return `
+      <td style="padding:10px;background:${box.bg};border:1px solid ${box.border};border-radius:6px;text-align:center;vertical-align:middle;">
+        <div style="${box.labelStyle}">${esc(label)}</div>
+        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:${box.valueColor};margin-top:2px;white-space:nowrap;">${lines.length ? lines.map(esc).join('<br>') : '—'}</div>
       </td>`;
+  };
 
-  // The pad is the one thing a driver must not miss, so it gets the only colored box in the email.
-  const padBox = sheet.pad ? `
-    <tr>
-      <td colspan="2" style="padding:10px 14px;background:#1e6fd9;border:1px solid #185cc0;border-radius:6px;color:#ffffff;">
-        <div style="font-size:11px;color:#dbe8ff;text-transform:uppercase;letter-spacing:.05em;">Pad #</div>
-        <div style="font-size:26px;font-weight:800;line-height:1.15;margin-top:2px;">${esc(sheet.pad)}</div>
-      </td>
-    </tr>` : '';
+  // The pad is the one thing a driver must not miss, so it gets the biggest box: a tall blue column
+  // on the right, beside the route, staging, wave and date. Longer pads get a smaller number, and
+  // only those may wrap (at a space), so the three columns still fit on a phone.
+  const pad = String(sheet.pad || '');
+  const padText = pad.length <= 2 ? 'font-size:44px;white-space:nowrap;' : pad.length <= 4 ? 'font-size:30px;white-space:nowrap;' : 'font-size:22px;';
+  const padBox = pad ? `
+      <td rowspan="2" width="24%" style="padding:10px 6px;background:#1e6fd9;border:1px solid #185cc0;border-radius:6px;color:#ffffff;text-align:center;vertical-align:middle;">
+        <div style="${BIG_LABEL}">Pad #</div>
+        <div style="${padText}font-weight:800;line-height:1.1;margin-top:4px;">${esc(pad)}</div>
+      </td>` : '';
 
   const bagRows = sheet.bags.map((b) => `
         <tr>
@@ -82,8 +105,8 @@ function renderEmailHtml(sheet, recipient) {
 <div style="${FONT}max-width:560px;margin:0 auto;padding:16px;color:#1b2430;background:#ffffff;">
   ${greet}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;">
-    <tr>${infoBox('Route', sheet.routeCode, true)}${infoBox('Staging', sheet.staging, true)}</tr>
-    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date)}</tr>${padBox}
+    <tr>${infoBox('Route', sheet.routeCode, { big: true })}${infoBox('Staging', sheet.staging, { big: true })}${padBox}</tr>
+    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date, { box: DATE_BOX })}</tr>
   </table>
   <p style="margin:8px 6px 0;font-size:13px;color:#5b6675;">${esc([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '))}</p>
 
@@ -110,7 +133,7 @@ function renderEmailHtml(sheet, recipient) {
 
 /** Plain-text version for the email's text part and for pasting where HTML isn't supported. */
 function renderEmailText(sheet, recipient) {
-  const date = sheet.dateLabel ? titleCase(sheet.dateLabel) : sheet.date || '';
+  const date = dateLines(sheet).join(', ');
   const lines = [];
   if (recipient && recipient.name) lines.push(`Hi ${firstName(recipient.name)}, here is your route sheet for ${date}.`, '');
   lines.push(`ROUTE: ${sheet.routeCode}    STAGING: ${sheet.staging}`);
