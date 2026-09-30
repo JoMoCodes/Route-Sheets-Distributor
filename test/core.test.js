@@ -514,6 +514,71 @@ test('Email: the pad shows as its own box and in the subject only when one is se
   assert.match(renderEmailText(s), /\r\nPAD #: 3 <b>\r\n/);
 });
 
+test('Email: the pad is a tall box on the right, beside the route, staging, wave and date', () => {
+  const plain = parsed.sheets[0];
+  const html = renderEmailHtml({ ...plain, pad: '12' });
+  const topRow = html.slice(html.indexOf('<tr>'), html.indexOf('</tr>'));
+  assert.deepEqual(topRow.match(/>(Route|Staging|Pad #)</g), ['>Route<', '>Staging<', '>Pad #<']);
+  assert.match(topRow, /<td rowspan="2"[^>]*>\s*<div[^>]*>Pad #</, 'reaches down beside Wave and Date');
+  assert.ok(!renderEmailHtml(plain).includes('rowspan'), 'no pad, no pad column');
+
+  // "Pad #" is bigger and bolder than the other labels.
+  const labelSize = (label) => Number(html.match(new RegExp(`font-size:(\\d+)px;[^"]*">${label}<`))[1]);
+  assert.ok(labelSize('Pad #') > labelSize('Route'));
+  assert.match(html, /font-weight:800;[^"]*">Pad #</);
+
+  // Values never split onto two lines by themselves, even on a narrow phone.
+  assert.match(html, /white-space:nowrap;">09:50 AM</);
+
+  const size = (pad) => Number(renderEmailHtml({ ...plain, pad }).match(/>Pad #<\/div>\s*<div style="font-size:(\d+)px;/)[1]);
+  assert.equal(size('1'), size('12'));
+  assert.ok(size('12') > size('B12') && size('B12') > size('DOOR 10 B2'), 'longer pads get a smaller number so they fit');
+});
+
+test('Email: the Date box shows the full day name, with the date on the line under it', () => {
+  const dateBox = (sheet) => renderEmailHtml(sheet).match(/>Date<\/div>\s*<div style="([^"]*)">(.*?)<\/div>/);
+  const [, style, text] = dateBox(parsed.sheets[0]);
+  assert.equal(text, 'Thursday<br>Sep 24, 2026');
+  assert.match(style, /white-space:nowrap;/, '"Sep 24" stays with "2026"');
+
+  const days = { MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday' };
+  for (const [abbr, day] of Object.entries(days)) assert.equal(dateBox({ ...parsed.sheets[0], dateLabel: `${abbr}, MAY 5, 2027` })[2], `${day}<br>May 5, 2027`);
+  assert.equal(dateBox({ ...parsed.sheets[0], dateLabel: null })[2], '2026-09-24', 'no printed date: the plain one, as before');
+});
+
+test('Email: the greeting says the full day name too; the subject keeps it short', () => {
+  const { renderEmailText, subjectFor } = require('../src/core/emailRender');
+  const who = { name: 'Alice Driver' };
+  assert.ok(renderEmailHtml(parsed.sheets[0], who).includes('Hi Alice, here is your route sheet for <span style="white-space:nowrap;">Thursday, Sep 24, 2026.</span></p>'), 'the date stays on one line');
+  const text = renderEmailText(parsed.sheets[0], who);
+  assert.ok(text.startsWith('Hi Alice, here is your route sheet for Thursday, Sep 24, 2026.\r\n'));
+  assert.match(text, /\r\nWAVE: 09:50 AM {4}DATE: Thursday, Sep 24, 2026\r\n/);
+  assert.match(subjectFor(parsed.sheets[0]), / · Thu, Sep 24, 2026 · 09:50 AM$/);
+});
+
+test('Email: the date stands out in a maroon box with white writing and a big, bold label', () => {
+  for (const sheet of [parsed.sheets[0], { ...parsed.sheets[0], pad: '1' }]) {
+    const html = renderEmailHtml(sheet);
+    const dateBox = html.match(/<td [^>]*>\s*<div[^>]*>Date<\/div>\s*<div[^>]*>/)[0];
+    assert.match(dateBox, /background:#8b1a2b;/);
+    assert.match(dateBox, /<div style="[^"]*color:#ffffff;[^"]*">$/, 'the date itself is white');
+    assert.equal(html.match(/background:#8b1a2b;/g).length, 1, 'only the date box is maroon');
+  }
+  const html = renderEmailHtml({ ...parsed.sheets[0], pad: '1' });
+  const labelStyle = (label) => html.match(new RegExp(`<div style="([^"]*)">${label}</div>`))[1];
+  assert.equal(labelStyle('Date'), labelStyle('Pad #'), '"Date" is as big and bold as "Pad #"');
+  assert.notEqual(labelStyle('Date'), labelStyle('Wave'));
+});
+
+test('Email: the words in every box at the top are centered, side to side and top to bottom', () => {
+  for (const sheet of [parsed.sheets[0], { ...parsed.sheets[0], pad: '1' }]) {
+    const html = renderEmailHtml(sheet);
+    const boxes = html.slice(html.indexOf('<table'), html.indexOf('</table>')).match(/<td [^>]*>/g);
+    assert.equal(boxes.length, sheet.pad ? 5 : 4);
+    for (const box of boxes) assert.match(box, /text-align:center;vertical-align:middle;/);
+  }
+});
+
 test('Service: pads are saved with the run, trimmed, cleared with a blank, and put on the email and summary', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
   try {
