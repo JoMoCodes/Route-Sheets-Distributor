@@ -55,7 +55,7 @@ function renderEmailHtml(sheet, recipient) {
   const padText = pad.length <= 2 ? 'font-size:44px;white-space:nowrap;' : pad.length <= 4 ? 'font-size:30px;white-space:nowrap;' : 'font-size:22px;';
   const padBox = pad ? `
       <td rowspan="2" width="24%" style="padding:10px 6px;background:#1e6fd9;border:1px solid #185cc0;border-radius:6px;color:#ffffff;text-align:center;vertical-align:middle;">
-        <div style="font-size:11px;color:#dbe8ff;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">Pad #</div>
+        <div style="font-size:18px;font-weight:800;color:#ffffff;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;">Pad #</div>
         <div style="${padText}font-weight:800;line-height:1.1;margin-top:4px;">${esc(pad)}</div>
       </td>` : '';
 
