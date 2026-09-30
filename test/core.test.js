@@ -536,6 +536,15 @@ test('Email: the pad is a tall box on the right, beside the route, staging, wave
   assert.ok(size('12') > size('B12') && size('B12') > size('DOOR 10 B2'), 'longer pads get a smaller number so they fit');
 });
 
+test('Email: the words in every box at the top are centered, side to side and top to bottom', () => {
+  for (const sheet of [parsed.sheets[0], { ...parsed.sheets[0], pad: '1' }]) {
+    const html = renderEmailHtml(sheet);
+    const boxes = html.slice(html.indexOf('<table'), html.indexOf('</table>')).match(/<td [^>]*>/g);
+    assert.equal(boxes.length, sheet.pad ? 5 : 4);
+    for (const box of boxes) assert.match(box, /text-align:center;vertical-align:middle;/);
+  }
+});
+
 test('Service: pads are saved with the run, trimmed, cleared with a blank, and put on the email and summary', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
   try {
