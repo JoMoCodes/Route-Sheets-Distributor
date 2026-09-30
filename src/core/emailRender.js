@@ -41,20 +41,23 @@ function renderEmailHtml(sheet, recipient) {
   const date = sheet.dateLabel ? titleCase(sheet.dateLabel) : sheet.date || '';
   const greet = recipient && recipient.name ? `<p style="margin:0 0 14px;font-size:15px;color:#1b2430;">Hi ${esc(firstName(recipient.name))}, here is your route sheet for ${esc(date)}.</p>` : '';
 
-  const infoBox = (label, value, big) => `
-      <td style="padding:10px 12px;background:#f3f5f8;border:1px solid #dde2e8;border-radius:6px;vertical-align:top;">
+  // Values stay on one line; only the date may wrap, on a narrow phone.
+  const infoBox = (label, value, { big = false, wrap = false } = {}) => `
+      <td style="padding:10px;background:#f3f5f8;border:1px solid #dde2e8;border-radius:6px;vertical-align:top;">
         <div style="font-size:11px;color:#5b6675;text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
-        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:#1b2430;margin-top:2px;">${esc(value || '—')}</div>
+        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:#1b2430;margin-top:2px;${wrap ? '' : 'white-space:nowrap;'}">${esc(value || '—')}</div>
       </td>`;
 
-  // The pad is the one thing a driver must not miss, so it gets the only colored box in the email.
-  const padBox = sheet.pad ? `
-    <tr>
-      <td colspan="2" style="padding:10px 14px;background:#1e6fd9;border:1px solid #185cc0;border-radius:6px;color:#ffffff;">
-        <div style="font-size:11px;color:#dbe8ff;text-transform:uppercase;letter-spacing:.05em;">Pad #</div>
-        <div style="font-size:26px;font-weight:800;line-height:1.15;margin-top:2px;">${esc(sheet.pad)}</div>
-      </td>
-    </tr>` : '';
+  // The pad is the one thing a driver must not miss, so it gets the only colored box in the email:
+  // a tall column on the right, beside the route, staging, wave and date. Longer pads get a smaller
+  // number, and only those may wrap (at a space), so the three columns still fit on a phone.
+  const pad = String(sheet.pad || '');
+  const padText = pad.length <= 2 ? 'font-size:44px;white-space:nowrap;' : pad.length <= 4 ? 'font-size:30px;white-space:nowrap;' : 'font-size:22px;';
+  const padBox = pad ? `
+      <td rowspan="2" width="24%" style="padding:10px 6px;background:#1e6fd9;border:1px solid #185cc0;border-radius:6px;color:#ffffff;text-align:center;vertical-align:middle;">
+        <div style="font-size:11px;color:#dbe8ff;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">Pad #</div>
+        <div style="${padText}font-weight:800;line-height:1.1;margin-top:4px;">${esc(pad)}</div>
+      </td>` : '';
 
   const bagRows = sheet.bags.map((b) => `
         <tr>
@@ -82,8 +85,8 @@ function renderEmailHtml(sheet, recipient) {
 <div style="${FONT}max-width:560px;margin:0 auto;padding:16px;color:#1b2430;background:#ffffff;">
   ${greet}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;">
-    <tr>${infoBox('Route', sheet.routeCode, true)}${infoBox('Staging', sheet.staging, true)}</tr>
-    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date)}</tr>${padBox}
+    <tr>${infoBox('Route', sheet.routeCode, { big: true })}${infoBox('Staging', sheet.staging, { big: true })}${padBox}</tr>
+    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date, { wrap: true })}</tr>
   </table>
   <p style="margin:8px 6px 0;font-size:13px;color:#5b6675;">${esc([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '))}</p>
 

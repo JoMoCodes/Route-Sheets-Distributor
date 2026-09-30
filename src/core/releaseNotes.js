@@ -6,6 +6,14 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.4.1',
+    items: [
+      'On each route sheet email, the pad now sits in a tall blue box on the right, next to the route, staging, wave and date. It used to be a wide box underneath them.',
+      'Pad numbers like 1 or 12 are shown extra big, so drivers can spot them at a glance.',
+      'The top of the email takes up less room, so drivers see their bag list sooner.',
+    ],
+  },
+  {
     version: '1.4.0',
     items: [
       'After you import the route sheet PDF, a new "Pad for each wave" box on the Distribute page lists every wave time. Type the pad number next to each one.',
