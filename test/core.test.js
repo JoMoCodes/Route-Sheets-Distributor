@@ -527,13 +527,24 @@ test('Email: the pad is a tall box on the right, beside the route, staging, wave
   assert.ok(labelSize('Pad #') > labelSize('Route'));
   assert.match(html, /font-weight:800;[^"]*">Pad #</);
 
-  // Short values never split onto two lines; only the long date may, on a narrow phone.
+  // Values never split onto two lines by themselves, even on a narrow phone.
   assert.match(html, /white-space:nowrap;">09:50 AM</);
-  assert.match(html, /margin-top:2px;">Thu, Sep 24, 2026</);
 
   const size = (pad) => Number(renderEmailHtml({ ...plain, pad }).match(/>Pad #<\/div>\s*<div style="font-size:(\d+)px;/)[1]);
   assert.equal(size('1'), size('12'));
   assert.ok(size('12') > size('B12') && size('B12') > size('DOOR 10 B2'), 'longer pads get a smaller number so they fit');
+});
+
+test('Email: the Date box shows the full day name, with the date on the line under it', () => {
+  const dateBox = (sheet) => renderEmailHtml(sheet).match(/>Date<\/div>\s*<div style="([^"]*)">(.*?)<\/div>/);
+  const [, style, text] = dateBox(parsed.sheets[0]);
+  assert.equal(text, 'Thursday<br>Sep 24, 2026');
+  assert.match(style, /white-space:nowrap;/, '"Sep 24" stays with "2026"');
+
+  const days = { MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday' };
+  for (const [abbr, day] of Object.entries(days)) assert.equal(dateBox({ ...parsed.sheets[0], dateLabel: `${abbr}, MAY 5, 2027` })[2], `${day}<br>May 5, 2027`);
+  assert.equal(dateBox({ ...parsed.sheets[0], dateLabel: null })[2], '2026-09-24', 'no printed date: the plain one, as before');
+  assert.ok(renderEmailHtml(parsed.sheets[0], { name: 'Alice Driver' }).includes('route sheet for Thu, Sep 24, 2026.'), 'the greeting is unchanged');
 });
 
 test('Email: the date stands out in a maroon box with white writing', () => {
