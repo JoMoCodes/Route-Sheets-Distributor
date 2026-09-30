@@ -514,6 +514,23 @@ test('Email: the pad shows as its own box and in the subject only when one is se
   assert.match(renderEmailText(s), /\r\nPAD #: 3 <b>\r\n/);
 });
 
+test('Email: the pad is a tall box on the right, beside the route, staging, wave and date', () => {
+  const plain = parsed.sheets[0];
+  const html = renderEmailHtml({ ...plain, pad: '12' });
+  const topRow = html.slice(html.indexOf('<tr>'), html.indexOf('</tr>'));
+  assert.deepEqual(topRow.match(/>(Route|Staging|Pad #)</g), ['>Route<', '>Staging<', '>Pad #<']);
+  assert.match(topRow, /<td rowspan="2"[^>]*>\s*<div[^>]*>Pad #</, 'reaches down beside Wave and Date');
+  assert.ok(!renderEmailHtml(plain).includes('rowspan'), 'no pad, no pad column');
+
+  // Short values never split onto two lines; only the long date may, on a narrow phone.
+  assert.match(html, /white-space:nowrap;">09:50 AM</);
+  assert.match(html, /margin-top:2px;">Thu, Sep 24, 2026</);
+
+  const size = (pad) => Number(renderEmailHtml({ ...plain, pad }).match(/>Pad #<\/div>\s*<div style="font-size:(\d+)px;/)[1]);
+  assert.equal(size('1'), size('12'));
+  assert.ok(size('12') > size('B12') && size('B12') > size('DOOR 10 B2'), 'longer pads get a smaller number so they fit');
+});
+
 test('Service: pads are saved with the run, trimmed, cleared with a blank, and put on the email and summary', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
   try {
