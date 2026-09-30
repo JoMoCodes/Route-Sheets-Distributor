@@ -41,16 +41,20 @@ function renderEmailHtml(sheet, recipient) {
   const date = sheet.dateLabel ? titleCase(sheet.dateLabel) : sheet.date || '';
   const greet = recipient && recipient.name ? `<p style="margin:0 0 14px;font-size:15px;color:#1b2430;">Hi ${esc(firstName(recipient.name))}, here is your route sheet for ${esc(date)}.</p>` : '';
 
+  // Gray boxes, except the date: a maroon one with white writing, so drivers check it is the right day.
+  const GRAY_BOX = { bg: '#f3f5f8', border: '#dde2e8', label: '#5b6675', value: '#1b2430' };
+  const DATE_BOX = { bg: '#8b1a2b', border: '#6f1422', label: '#f6d8dd', value: '#ffffff' };
+
   // Values stay on one line; only the date may wrap, on a narrow phone.
-  const infoBox = (label, value, { big = false, wrap = false } = {}) => `
-      <td style="padding:10px;background:#f3f5f8;border:1px solid #dde2e8;border-radius:6px;text-align:center;vertical-align:middle;">
-        <div style="font-size:11px;color:#5b6675;text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
-        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:#1b2430;margin-top:2px;${wrap ? '' : 'white-space:nowrap;'}">${esc(value || '—')}</div>
+  const infoBox = (label, value, { big = false, wrap = false, colors = GRAY_BOX } = {}) => `
+      <td style="padding:10px;background:${colors.bg};border:1px solid ${colors.border};border-radius:6px;text-align:center;vertical-align:middle;">
+        <div style="font-size:11px;color:${colors.label};text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
+        <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:${colors.value};margin-top:2px;${wrap ? '' : 'white-space:nowrap;'}">${esc(value || '—')}</div>
       </td>`;
 
-  // The pad is the one thing a driver must not miss, so it gets the only colored box in the email:
-  // a tall column on the right, beside the route, staging, wave and date. Longer pads get a smaller
-  // number, and only those may wrap (at a space), so the three columns still fit on a phone.
+  // The pad is the one thing a driver must not miss, so it gets the biggest box: a tall blue column
+  // on the right, beside the route, staging, wave and date. Longer pads get a smaller number, and
+  // only those may wrap (at a space), so the three columns still fit on a phone.
   const pad = String(sheet.pad || '');
   const padText = pad.length <= 2 ? 'font-size:44px;white-space:nowrap;' : pad.length <= 4 ? 'font-size:30px;white-space:nowrap;' : 'font-size:22px;';
   const padBox = pad ? `
@@ -86,7 +90,7 @@ function renderEmailHtml(sheet, recipient) {
   ${greet}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="6" style="border-collapse:separate;">
     <tr>${infoBox('Route', sheet.routeCode, { big: true })}${infoBox('Staging', sheet.staging, { big: true })}${padBox}</tr>
-    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date, { wrap: true })}</tr>
+    <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date, { wrap: true, colors: DATE_BOX })}</tr>
   </table>
   <p style="margin:8px 6px 0;font-size:13px;color:#5b6675;">${esc([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '))}</p>
 
