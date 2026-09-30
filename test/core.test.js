@@ -522,6 +522,11 @@ test('Email: the pad is a tall box on the right, beside the route, staging, wave
   assert.match(topRow, /<td rowspan="2"[^>]*>\s*<div[^>]*>Pad #</, 'reaches down beside Wave and Date');
   assert.ok(!renderEmailHtml(plain).includes('rowspan'), 'no pad, no pad column');
 
+  // "Pad #" is bigger and bolder than the other labels.
+  const labelSize = (label) => Number(html.match(new RegExp(`font-size:(\\d+)px;[^"]*">${label}<`))[1]);
+  assert.ok(labelSize('Pad #') > labelSize('Route'));
+  assert.match(html, /font-weight:800;[^"]*">Pad #</);
+
   // Short values never split onto two lines; only the long date may, on a narrow phone.
   assert.match(html, /white-space:nowrap;">09:50 AM</);
   assert.match(html, /margin-top:2px;">Thu, Sep 24, 2026</);
