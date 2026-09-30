@@ -544,10 +544,19 @@ test('Email: the Date box shows the full day name, with the date on the line und
   const days = { MON: 'Monday', TUE: 'Tuesday', WED: 'Wednesday', THU: 'Thursday', FRI: 'Friday', SAT: 'Saturday', SUN: 'Sunday' };
   for (const [abbr, day] of Object.entries(days)) assert.equal(dateBox({ ...parsed.sheets[0], dateLabel: `${abbr}, MAY 5, 2027` })[2], `${day}<br>May 5, 2027`);
   assert.equal(dateBox({ ...parsed.sheets[0], dateLabel: null })[2], '2026-09-24', 'no printed date: the plain one, as before');
-  assert.ok(renderEmailHtml(parsed.sheets[0], { name: 'Alice Driver' }).includes('route sheet for Thu, Sep 24, 2026.'), 'the greeting is unchanged');
 });
 
-test('Email: the date stands out in a maroon box with white writing', () => {
+test('Email: the greeting says the full day name too; the subject keeps it short', () => {
+  const { renderEmailText, subjectFor } = require('../src/core/emailRender');
+  const who = { name: 'Alice Driver' };
+  assert.ok(renderEmailHtml(parsed.sheets[0], who).includes('Hi Alice, here is your route sheet for <span style="white-space:nowrap;">Thursday, Sep 24, 2026.</span></p>'), 'the date stays on one line');
+  const text = renderEmailText(parsed.sheets[0], who);
+  assert.ok(text.startsWith('Hi Alice, here is your route sheet for Thursday, Sep 24, 2026.\r\n'));
+  assert.match(text, /\r\nWAVE: 09:50 AM {4}DATE: Thursday, Sep 24, 2026\r\n/);
+  assert.match(subjectFor(parsed.sheets[0]), / · Thu, Sep 24, 2026 · 09:50 AM$/);
+});
+
+test('Email: the date stands out in a maroon box with white writing and a big, bold label', () => {
   for (const sheet of [parsed.sheets[0], { ...parsed.sheets[0], pad: '1' }]) {
     const html = renderEmailHtml(sheet);
     const dateBox = html.match(/<td [^>]*>\s*<div[^>]*>Date<\/div>\s*<div[^>]*>/)[0];
@@ -555,6 +564,10 @@ test('Email: the date stands out in a maroon box with white writing', () => {
     assert.match(dateBox, /<div style="[^"]*color:#ffffff;[^"]*">$/, 'the date itself is white');
     assert.equal(html.match(/background:#8b1a2b;/g).length, 1, 'only the date box is maroon');
   }
+  const html = renderEmailHtml({ ...parsed.sheets[0], pad: '1' });
+  const labelStyle = (label) => html.match(new RegExp(`<div style="([^"]*)">${label}</div>`))[1];
+  assert.equal(labelStyle('Date'), labelStyle('Pad #'), '"Date" is as big and bold as "Pad #"');
+  assert.notEqual(labelStyle('Date'), labelStyle('Wave'));
 });
 
 test('Email: the words in every box at the top are centered, side to side and top to bottom', () => {
