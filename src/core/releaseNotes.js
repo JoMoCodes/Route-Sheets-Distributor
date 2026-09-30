@@ -9,9 +9,10 @@ const RELEASE_NOTES = [
     version: '1.4.1',
     items: [
       'On each route sheet email, the pad now sits in a tall blue box on the right, next to the route, staging, wave and date. It used to be a wide box underneath them.',
-      'The words "Pad #" and the pad number are big and bold, so drivers can spot them at a glance.',
       'The date now has its own dark red box with white writing, so drivers can quickly check they have the right day.',
-      'That box shows the full day name, like "Friday", with the date underneath it.',
+      'That box shows the full day name, like "Friday", with the rest of the date underneath it.',
+      'The greeting at the top of the email says the full day name too.',
+      'The words "Pad #" and "Date", and the pad number, are big and bold, so drivers can spot them at a glance.',
       'The words in every box at the top of the email are now centered.',
       'The top of the email takes up less room, so drivers see their bag list sooner.',
     ],
