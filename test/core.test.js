@@ -536,6 +536,16 @@ test('Email: the pad is a tall box on the right, beside the route, staging, wave
   assert.ok(size('12') > size('B12') && size('B12') > size('DOOR 10 B2'), 'longer pads get a smaller number so they fit');
 });
 
+test('Email: the date stands out in a maroon box with white writing', () => {
+  for (const sheet of [parsed.sheets[0], { ...parsed.sheets[0], pad: '1' }]) {
+    const html = renderEmailHtml(sheet);
+    const dateBox = html.match(/<td [^>]*>\s*<div[^>]*>Date<\/div>\s*<div[^>]*>/)[0];
+    assert.match(dateBox, /background:#8b1a2b;/);
+    assert.match(dateBox, /<div style="[^"]*color:#ffffff;[^"]*">$/, 'the date itself is white');
+    assert.equal(html.match(/background:#8b1a2b;/g).length, 1, 'only the date box is maroon');
+  }
+});
+
 test('Email: the words in every box at the top are centered, side to side and top to bottom', () => {
   for (const sheet of [parsed.sheets[0], { ...parsed.sheets[0], pad: '1' }]) {
     const html = renderEmailHtml(sheet);
