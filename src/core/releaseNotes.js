@@ -10,6 +10,7 @@ const RELEASE_NOTES = [
     items: [
       'On each route sheet email, the pad now sits in a tall blue box on the right, next to the route, staging, wave and date. It used to be a wide box underneath them.',
       'The words "Pad #" and the pad number are big and bold, so drivers can spot them at a glance.',
+      'The words in every box at the top of the email are now centered.',
       'The top of the email takes up less room, so drivers see their bag list sooner.',
     ],
   },

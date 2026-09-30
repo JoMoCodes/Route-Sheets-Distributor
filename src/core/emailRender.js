@@ -43,7 +43,7 @@ function renderEmailHtml(sheet, recipient) {
 
   // Values stay on one line; only the date may wrap, on a narrow phone.
   const infoBox = (label, value, { big = false, wrap = false } = {}) => `
-      <td style="padding:10px;background:#f3f5f8;border:1px solid #dde2e8;border-radius:6px;vertical-align:top;">
+      <td style="padding:10px;background:#f3f5f8;border:1px solid #dde2e8;border-radius:6px;text-align:center;vertical-align:middle;">
         <div style="font-size:11px;color:#5b6675;text-transform:uppercase;letter-spacing:.05em;">${esc(label)}</div>
         <div style="font-size:${big ? 24 : 17}px;font-weight:700;color:#1b2430;margin-top:2px;${wrap ? '' : 'white-space:nowrap;'}">${esc(value || '—')}</div>
       </td>`;
