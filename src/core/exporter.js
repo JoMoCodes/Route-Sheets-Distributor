@@ -69,7 +69,7 @@ async function buildRouteEmail(sheet, recipients, pdfBuffer) {
   const subject = subjectFor(sheet);
   const pdfName = safeFileName(`${sheet.routeCode} ${sheet.staging || ''} route sheet.pdf`);
   const attachments = [];
-  if (pdfBuffer) attachments.push({ filename: pdfName, content: await extractPages(pdfBuffer, [sheet.pageNumber]), contentType: 'application/pdf' });
+  if (pdfBuffer) attachments.push({ filename: pdfName, content: await extractPages(pdfBuffer, sheet.pageNumbers || [sheet.pageNumber]), contentType: 'application/pdf' });
   const eml = buildEml({ to: recipients.map((r) => r.email).filter(Boolean), subject, html, text, attachments });
   return { html, text, subject, eml, pdfName, pdf: attachments[0] ? attachments[0].content : null };
 }

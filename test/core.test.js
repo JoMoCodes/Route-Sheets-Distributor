@@ -13,7 +13,7 @@ const { buildEml, extractPages } = require('../src/core/exporter');
 const { renderEmailHtml } = require('../src/core/emailRender');
 const { Store } = require('../src/core/store');
 const { Service, detectKind } = require('../src/core/service');
-const { ASSOCIATES_CSV, ROUTES_CSV, buildRouteSheetPdf } = require('./fixtures');
+const { ASSOCIATES_CSV, ROUTES_CSV, SHEETS, buildRouteSheetPdf } = require('./fixtures');
 
 let pdfBuffer;
 let parsed;
@@ -104,6 +104,28 @@ test('PDF: headings split into separate runs ("24" + "bags", "ETDT ·" + service
   assert.deepEqual(s.bags.map((b) => b.packages), [20, 13]);
   assert.deepEqual(s.overflow.map((o) => o.packages), [1, 2]);
   assert.equal(s.totalPackages, 36);
+});
+
+test('PDF: a long route whose tables spill onto the next page is read as one sheet, and blank pages are skipped', async () => {
+  const long = { ...SHEETS[0], routeCode: 'CX901', continued: true };
+  const buf = await buildRouteSheetPdf([SHEETS[1], long, { blank: true }, SHEETS[2]]);
+  const r = await parseRouteSheetPdf(buf);
+  assert.deepEqual(r.sheets.map((s) => s.routeCode), ['CX102', 'CX901', 'CX103']);
+  const s = r.sheets[1];
+  assert.equal(s.check.ok, true, s.check.problems.join('; '));
+  assert.equal(s.pageNumber, 2);
+  assert.deepEqual(s.pageNumbers, [2, 3]);
+  assert.equal(s.bagCount, 3);
+  assert.equal(s.bags.length, 3);
+  assert.equal(s.overflow.length, 2);
+  assert.equal(s.totalPackages, 37);
+  assert.deepEqual(r.sheets[2].pageNumbers, [5]);
+  assert.equal(r.pageCount, 5);
+  assert.deepEqual(r.pageErrors.map((e) => e.pageNumber), [4]);
+  assert.match(r.pageErrors[0].message, /blank/);
+  // The PDF a driver gets carries both pages of the route.
+  const both = await PDFDocument.load(await extractPages(buf, s.pageNumbers));
+  assert.equal(both.getPageCount(), 2);
 });
 
 test('Associates: parses, collapses double spaces, uppercases IDs, flags duplicates', () => {

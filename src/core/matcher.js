@@ -21,6 +21,7 @@ function summarizeSheet(s, pad = null) {
   if (!s) return null;
   return {
     pageNumber: s.pageNumber,
+    pageNumbers: s.pageNumbers || [s.pageNumber],
     staging: s.staging,
     waveTime: s.waveTime,
     pad, // the pad the user chose for this sheet's wave time, or null

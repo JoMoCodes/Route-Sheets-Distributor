@@ -6,6 +6,14 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.4.3',
+    items: [
+      'Very long routes, whose bag list runs onto a second page of the PDF, now work. Before, they showed as "Route sheet numbers did not add up" and the extra page was flagged as "not a route sheet".',
+      'The driver\'s PDF for such a route includes both pages, and the Route Sheets page lists both page numbers.',
+      'Blank pages at the end of the PDF are skipped quietly.',
+    ],
+  },
+  {
     version: '1.4.2',
     items: [
       'Route sheet PDFs downloaded from October 10, 2026 onward are read correctly again. Amazon changed how the PDF is made, so the app could not find the "bags" and "overflow" headings. Every route showed "Route sheet numbers did not add up" and nothing could be sent.',

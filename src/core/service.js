@@ -334,7 +334,7 @@ class Service {
     const sheet = this.sheet(routeCode);
     const pdf = this.store.readRunPdf(this.run.id);
     if (!sheet || !pdf) throw new Error('The original route sheet PDF for this run is not available.');
-    return extractPages(pdf, [sheet.pageNumber]);
+    return extractPages(pdf, sheet.pageNumbers || [sheet.pageNumber]);
   }
 
   // ---------- what's new ----------

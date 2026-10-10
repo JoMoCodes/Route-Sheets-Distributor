@@ -59,6 +59,7 @@ function parsePageItems(items, pageWidth, pageNumber) {
 
   const sheet = {
     pageNumber,
+    pageNumbers: [pageNumber], // every PDF page this sheet spans (long routes spill onto a second page)
     routeCode: null,
     staging: null,
     dsp: null,
@@ -276,6 +277,11 @@ function verifySheet(s) {
   return { ok: problems.length === 0, problems, notes, bagPackages: bagPkgs, overflowPackages: ovPkgs };
 }
 
+/** True when the page carries its own route code heading (i.e. starts a new sheet). */
+function hasRouteCode(items) {
+  return items.some((i) => i.size >= 20 && ROUTE_CODE_RE.test(String(i.str).trim()));
+}
+
 /** Parses a route sheet PDF buffer. Returns { sheets, pageErrors, pageCount }. */
 async function parseRouteSheetPdf(buffer) {
   const pdfjs = await loadPdfjs();
@@ -291,13 +297,16 @@ async function parseRouteSheetPdf(buffer) {
   const doc = await task.promise;
   const sheets = [];
   const pageErrors = [];
+  let pageCount = 0;
   try {
+    pageCount = doc.numPages;
+    const pages = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
       const viewport = page.getViewport({ scale: 1 });
       const content = await page.getTextContent();
       const items = content.items
-        .filter((i) => typeof i.str === 'string')
+        .filter((i) => typeof i.str === 'string' && i.str.trim().length > 0)
         .map((i) => ({
           str: i.str,
           x: i.transform[4],
@@ -305,17 +314,42 @@ async function parseRouteSheetPdf(buffer) {
           width: i.width,
           size: Math.abs(i.transform[3]) || i.height,
         }));
-      const sheet = parsePageItems(items, viewport.width, p);
-      if (!sheet.routeCode) {
-        pageErrors.push({ pageNumber: p, message: `Page ${p} does not look like a route sheet (no route code found).` });
+      pages.push({ pageNumber: p, items, width: viewport.width, height: viewport.height });
+    }
+    let i = 0;
+    while (i < pages.length) {
+      const pg = pages[i];
+      if (!pg.items.length) {
+        pageErrors.push({ pageNumber: pg.pageNumber, message: `Page ${pg.pageNumber} is blank and was skipped.` });
+        i++;
         continue;
       }
+      if (!hasRouteCode(pg.items)) {
+        pageErrors.push({ pageNumber: pg.pageNumber, message: `Page ${pg.pageNumber} does not look like a route sheet (no route code found).` });
+        i++;
+        continue;
+      }
+      // A long route spills onto the next page(s), which carry the rest of its tables but no
+      // route code of their own. Stack those pages under this one and read them as one sheet.
+      const pageNumbers = [pg.pageNumber];
+      const items = [...pg.items];
+      let offset = pg.height;
+      let j = i + 1;
+      while (j < pages.length && pages[j].items.length && !hasRouteCode(pages[j].items)) {
+        for (const it of pages[j].items) items.push({ ...it, y: it.y + offset });
+        offset += pages[j].height;
+        pageNumbers.push(pages[j].pageNumber);
+        j++;
+      }
+      const sheet = parsePageItems(items, pg.width, pg.pageNumber);
+      sheet.pageNumbers = pageNumbers;
       sheets.push(sheet);
+      i = j;
     }
   } finally {
     await task.destroy();
   }
-  return { sheets, pageErrors, pageCount: sheets.length + pageErrors.length };
+  return { sheets, pageErrors, pageCount };
 }
 
 module.exports = { parseRouteSheetPdf, parsePageItems, verifySheet, groupLines, findColumns, readRow };

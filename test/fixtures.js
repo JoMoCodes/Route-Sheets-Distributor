@@ -47,8 +47,10 @@ async function buildRouteSheetPdf(sheets = SHEETS) {
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   for (const s of sheets) {
-    const page = doc.addPage([612, 792]);
-    const top = (y) => 792 - y; // author in top-down coordinates like the real sheet
+    if (s.blank) { doc.addPage([612, 792]); continue; } // a blank trailing page, as some exports have
+    let page = doc.addPage([612, 792]);
+    let shift = 0; // a "continued" sheet draws its tables on a second page, starting near the top
+    const top = (y) => 792 - (y - shift); // author in top-down coordinates like the real sheet
     const text = (str, x, y, size = 10.5, f = font) => str && page.drawText(str, { x, y: top(y), size, font: f });
     const right = (str, rx, y, size = 10.5, f = font) => str && page.drawText(str, { x: rx - f.widthOfTextAtSize(str, size), y: top(y), size, font: f });
 
@@ -56,6 +58,7 @@ async function buildRouteSheetPdf(sheets = SHEETS) {
     text(s.routeCode, 36, 160, 36);
     right(`ACME · ${s.service}`, 576, 140);
     right(`XYZ1 · THU, SEP 24, 2026 · CYCLE_1 · ${s.wave}`, 576, 157);
+    if (s.continued) { page = doc.addPage([612, 792]); shift = 220; }
     const ovTotal = s.overflow.reduce((a, r) => a + Number(r[2]), 0);
     text(`${s.bags.length} bags`, 36, 235, 15, bold);
     text(`${ovTotal} overflow`, 322, 235, 15, bold);

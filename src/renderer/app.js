@@ -555,7 +555,7 @@ function sheetDetail(r) {
       fact('Route', r.routeCode), fact('Staging', s.staging), fact('Wave', s.waveTime),
       fact('Pad #', s.pad || (s.waveTime ? h('button', { class: 'link', onclick: () => go('distribute') }, 'Set on Distribute') : null)), fact('Date', s.dateLabel),
       fact('Service type', s.serviceType), fact('Bags', s.bagCount), fact('Overflow packages', s.overflowCount),
-      fact('Total packages', s.totalPackages), fact('Commercial packages', s.commercialPackages), fact('PDF page', s.pageNumber), check),
+      fact('Total packages', s.totalPackages), fact('Commercial packages', s.commercialPackages), fact((s.pageNumbers || []).length > 1 ? 'PDF pages' : 'PDF page', (s.pageNumbers || [s.pageNumber]).join(', ')), check),
     h('div', { class: 'panel facts' },
       h('div', { class: 'question' }, 'Transporter ID match'),
       r.listed.length ? r.listed.map((c) => h('div', {},
