@@ -176,7 +176,7 @@ test('Distribute: exact single match is ready; everything else needs a person to
   assert.equal(byCode(d, 'CX107').state, 'exception');
   assert.match(byCode(d, 'CX107').headline, /not on the routes file/);
   assert.equal(byCode(d, 'CX108').state, 'exception');
-  assert.match(byCode(d, 'CX108').headline, /did not add up/);
+  assert.match(byCode(d, 'CX108').headline, /couldn't read its tables.*attached PDF/);
   assert.equal(byCode(d, 'CX999').state, 'no-sheet');
 });
 

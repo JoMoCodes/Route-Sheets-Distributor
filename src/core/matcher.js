@@ -161,7 +161,7 @@ function distribute({ sheets = [], routes = [], associates = [], decisions = {},
       res.source = 'auto';
       if (!sheet.check.ok) {
         res.state = STATES.EXCEPTION;
-        res.headline = 'Route sheet numbers did not add up — review the original page before sending';
+        res.headline = "Found this route's page, but the app couldn't read its tables. Check the original page, then send it so the driver uses the attached PDF.";
       } else if (res.kind === 'unassigned') {
         res.state = STATES.EXCEPTION;
         res.headline = route ? 'Routes file lists no driver for this route' : 'Route is in the PDF but not on the routes file';

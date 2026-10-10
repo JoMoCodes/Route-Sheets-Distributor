@@ -6,6 +6,12 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.5.2',
+    items: [
+      "When the app finds a route's page but can't read the tables on it, the message on the Distribute page now says exactly that, and tells you to check the original page and send it so the driver uses the attached PDF. It used to say \"numbers did not add up\".",
+    ],
+  },
+  {
     version: '1.5.1',
     items: [
       'The "Load Out PDF" box from version 1.5.0 has been removed, along with the per-route pad box. It was added by mistake.',
