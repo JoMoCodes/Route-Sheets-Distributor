@@ -6,6 +6,13 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.4.2',
+    items: [
+      'Route sheet PDFs downloaded from October 10, 2026 onward are read correctly again. Amazon changed how the PDF is made, so the app could not find the "bags" and "overflow" headings. Every route showed "Route sheet numbers did not add up" and nothing could be sent.',
+      'Older PDFs still work the same as before.',
+    ],
+  },
+  {
     version: '1.4.1',
     items: [
       'On each route sheet email, the pad now sits in a tall blue box on the right, next to the route, staging, wave and date. It used to be a wide box underneath them.',

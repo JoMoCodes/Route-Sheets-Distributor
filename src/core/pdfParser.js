@@ -103,9 +103,11 @@ function parsePageItems(items, pageWidth, pageNumber) {
     }
   }
   // Service line is the "·"-separated line printed just above the date line.
+  // The line may be split into several runs ("ETDT ·", "Standard Parcel"), so read the whole line.
   const serviceItem = clean.find((i) => i.str.includes('·') && !DATE_LINE_RE.test(i.str) && i.size < 20);
+  const serviceLine = serviceItem && lines.find((l) => l.items.includes(serviceItem));
   if (serviceItem) {
-    const parts = serviceItem.str.split('·').map((s) => s.trim());
+    const parts = lineText(serviceLine).split('·').map((s) => s.trim());
     if (parts.length > 1) {
       sheet.dsp = parts[0];
       sheet.serviceType = parts.slice(1).join(' · ');
@@ -114,10 +116,12 @@ function parsePageItems(items, pageWidth, pageNumber) {
     }
   }
 
-  const bagsHeader = clean.find((i) => BAGS_RE.test(i.str));
-  const overflowHeader = clean.find((i) => OVERFLOW_RE.test(i.str));
-  if (bagsHeader) sheet.bagCount = Number(bagsHeader.str.match(BAGS_RE)[1]);
-  if (overflowHeader) sheet.overflowCount = Number(overflowHeader.str.match(OVERFLOW_RE)[1]);
+  // The count and the word may be one text run ("24 bags") or split into two ("24", "bags"),
+  // depending on how the sheet was generated, so headings are matched on whole visual lines.
+  const bagsHeader = findHeading(lines, BAGS_RE);
+  const overflowHeader = findHeading(lines, OVERFLOW_RE);
+  if (bagsHeader) sheet.bagCount = bagsHeader.count;
+  if (overflowHeader) sheet.overflowCount = overflowHeader.count;
 
   const splitX = overflowHeader ? overflowHeader.x - 10 : pageWidth / 2;
   const tableTop = Math.min(bagsHeader ? bagsHeader.y : Infinity, overflowHeader ? overflowHeader.y : Infinity);
@@ -158,6 +162,25 @@ function parsePageItems(items, pageWidth, pageNumber) {
 
   sheet.check = verifySheet(sheet);
   return sheet;
+}
+
+/**
+ * Finds a heading such as "24 bags" / "37 overflow" that may be one run or several on a line.
+ * Returns the count plus the position of the heading's first run, or null.
+ */
+function findHeading(lines, re) {
+  for (const l of lines) {
+    for (let i = 0; i < l.items.length; i++) {
+      // Try the run on its own, then joined with the runs that follow it on the same line.
+      let text = '';
+      for (let j = i; j < l.items.length && j < i + 3; j++) {
+        text = text ? `${text} ${l.items[j].str}` : l.items[j].str;
+        const m = text.match(re);
+        if (m) return { count: Number(m[1]), x: l.items[i].x, y: l.items[i].y, str: text };
+      }
+    }
+  }
+  return null;
 }
 
 /**

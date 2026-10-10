@@ -77,6 +77,35 @@ test('PDF: parser works from positioned items without widths (fallback path)', (
   assert.deepEqual(s.bags, [{ index: 1, sortZone: 'Z-1', bag: 'Green 1', packages: 5 }]);
 });
 
+test('PDF: headings split into separate runs ("24" + "bags", "ETDT ·" + service) are still read', () => {
+  // Layout taken from a real sheet generated on 2026-10-10, where the count and the word became
+  // separate text runs and the service line split after the "·".
+  const items = [
+    { str: 'STG.G6.1', x: 36, y: 108.7, width: 236, size: 57 }, { str: 'CX203', x: 36, y: 165.7, width: 106.9, size: 36 },
+    { str: 'ETDT ·', x: 348.1, y: 148.5, width: 30.2, size: 10.5 }, { str: 'Standard Parcel Electric - Rivian MEDIUM', x: 381.1, y: 148.5, width: 194.9, size: 10.5 },
+    { str: 'DHO8 · SAT, OCT 10, 2026 · CYCLE_1 · 09:50 AM', x: 347.2, y: 165, width: 228.8, size: 10.5 },
+    { str: '2', x: 36, y: 238.5, width: 17.6, size: 15 }, { str: 'bags', x: 57.5, y: 238.5, width: 33, size: 15 },
+    { str: 'Sort Zone', x: 66.7, y: 267, width: 46.9, size: 10.5 }, { str: 'Bag', x: 209.9, y: 267, width: 18.1, size: 10.5 }, { str: 'Pkgs', x: 243.3, y: 267, width: 22.2, size: 10.5 },
+    { str: '1', x: 36, y: 283.5, width: 6.2, size: 10.5 }, { str: 'E-11.2C', x: 66.7, y: 283.5, width: 37.4, size: 10.5 }, { str: 'Yellow 7936', x: 167.7, y: 283.5, width: 60.3, size: 10.5 }, { str: '20', x: 253.2, y: 283.5, width: 12.3, size: 10.5 },
+    { str: '2', x: 36, y: 300, width: 6.2, size: 10.5 }, { str: 'E-11.4C', x: 66.7, y: 300, width: 37.4, size: 10.5 }, { str: 'Green 7445', x: 171.2, y: 300, width: 56.8, size: 10.5 }, { str: '13', x: 253.2, y: 300, width: 12.3, size: 10.5 },
+    { str: '3', x: 322.2, y: 238.5, width: 17.6, size: 15 }, { str: 'overflow', x: 343.7, y: 238.5, width: 62.3, size: 15 },
+    { str: 'Sort Zone', x: 353, y: 267, width: 46.9, size: 10.5 }, { str: 'Pkgs', x: 529.5, y: 267, width: 22.2, size: 10.5 },
+    { str: '1', x: 322.2, y: 283.5, width: 6.2, size: 10.5 }, { str: 'E-11.2Z', x: 353, y: 283.5, width: 38, size: 10.5 }, { str: '1', x: 545.5, y: 283.5, width: 6.2, size: 10.5 },
+    { str: '2', x: 322.2, y: 300, width: 6.2, size: 10.5 }, { str: 'E-11.3W', x: 353, y: 300, width: 41.7, size: 10.5 }, { str: '2', x: 545.5, y: 300, width: 6.2, size: 10.5 },
+    { str: 'Total Packages', x: 322.2, y: 654, width: 73.6, size: 10.5 }, { str: '36', x: 533.2, y: 654, width: 18.5, size: 10.5 },
+    { str: 'Commercial Packages', x: 322.2, y: 669, width: 107.4, size: 10.5 }, { str: '6', x: 539.4, y: 669, width: 12.3, size: 10.5 },
+  ];
+  const s = parsePageItems(items, 612, 1);
+  assert.equal(s.check.ok, true, s.check.problems.join('; '));
+  assert.equal(s.dsp, 'ETDT');
+  assert.equal(s.serviceType, 'Standard Parcel Electric - Rivian MEDIUM');
+  assert.equal(s.bagCount, 2);
+  assert.equal(s.overflowCount, 3);
+  assert.deepEqual(s.bags.map((b) => b.packages), [20, 13]);
+  assert.deepEqual(s.overflow.map((o) => o.packages), [1, 2]);
+  assert.equal(s.totalPackages, 36);
+});
+
 test('Associates: parses, collapses double spaces, uppercases IDs, flags duplicates', () => {
   const csv = `${ASSOCIATES_CSV}\nDupe Person,aaaa1111,,,,,,,ACTIVE`;
   const { associates: list, warnings } = parseAssociates(parseCsvRows(csv));
