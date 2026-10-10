@@ -263,21 +263,15 @@ function viewDistribute() {
 function wavePadsSection() {
   const waves = S.distribution.waves;
   if (!waves.length) return null;
-  const unpadded = waves.reduce((a, w) => a + w.unpadded, 0);
-  const lo = S.run.loadOut;
+  const missing = waves.filter((w) => !w.pad).length;
   return section(
     'Pad for each wave',
-    lo
-      ? 'Pads came from the Load Out. A pad typed here only fills in routes the Load Out missed; it never replaces a Load Out pad. To change one route, open it on the Route Sheets page.'
-      : 'Type the pad number next to each wave time. It shows in a blue box on every route sheet for that wave, so drivers know where to load. Or import the Load Out PDF above and the pads fill in by themselves.',
-    unpadded ? badge(`${plural(unpadded, 'route')} without a pad`, 'amber') : badge('Every route has a pad', 'green'),
-    h('div', { class: 'panel waves' }, waves.map((w) => h('label', { class: `wave ${w.unpadded === 0 ? 'set' : ''}` },
+    'Type the pad number next to each wave time. It shows in a blue box on every route sheet for that wave, so drivers know where to load.',
+    missing ? badge(`${plural(missing, 'wave')} without a pad`, 'amber') : badge('Every wave has a pad', 'green'),
+    h('div', { class: 'panel waves' }, waves.map((w) => h('label', { class: `wave ${w.pad ? 'set' : ''}` },
       h('div', {},
         h('div', { class: 'wave-time' }, w.waveTime),
-        h('div', { class: 'wave-routes' }, plural(w.routes, 'route')),
-        w.fromLoadOut || w.typed
-          ? h('div', { class: 'wave-routes' }, [w.fromLoadOut ? `${w.fromLoadOut} from Load Out` : null, w.typed ? `${w.typed} typed by route` : null].filter(Boolean).join(' · '))
-          : null),
+        h('div', { class: 'wave-routes' }, plural(w.routes, 'route'))),
       h('div', { class: 'pad-field' },
         h('span', { class: 'pad-label' }, 'Pad #'),
         h('input', {
@@ -308,19 +302,13 @@ function importCards() {
   const rf = S.run.routesFile;
   const multi = S.distribution.routes.filter((r) => r.listed.length > 1).length;
   const stale = associatesStale();
-  const lo = S.run.loadOut;
-  const card = (title, ok, file, detail, warnings, kind, old = false, { optional = false, extra = null } = {}) => h('div', { class: `panel import-card ${old ? 'stale' : ''}` },
-    h('div', { class: 'title' }, h('span', { class: 'title-text' }, title, helpButton(kind, title)), old ? badge('Over a month old', 'amber') : ok ? badge('Loaded', 'green') : optional ? badge('Optional', 'gray') : badge('Not loaded', 'gray')),
+  const card = (title, ok, file, detail, warnings, kind, old = false) => h('div', { class: `panel import-card ${old ? 'stale' : ''}` },
+    h('div', { class: 'title' }, h('span', { class: 'title-text' }, title, helpButton(kind, title)), old ? badge('Over a month old', 'amber') : ok ? badge('Loaded', 'green') : badge('Not loaded', 'gray')),
     h('div', { class: 'file' }, file || 'No file yet'),
     detail ? h('div', { class: 'detail' }, detail) : null,
     old ? h('div', { class: 'stale-note' }, `Last imported ${plural(daysSince(a.importedAt), 'day')} ago. Import the latest Associate Data so new drivers, status changes and email addresses are up to date.`) : null,
     warnings && warnings.length ? h('ul', { class: 'issues' }, warnings.map((w) => h('li', { class: 'warn' }, w))) : null,
-    h('div', { class: 'card-actions toolbar' }, h('button', { class: ok && !old ? 'btn small' : optional ? 'btn small' : 'btn primary small', onclick: () => doImport(kind) }, old ? 'Import new…' : ok ? 'Replace…' : 'Import…'), extra));
-  const loadOutWarnings = lo && [
-    ...lo.warnings,
-    ...(lo.notInPdf.length ? [`On the Load Out but not in the route sheet PDF: ${lo.notInPdf.join(', ')}`] : []),
-    ...(lo.notOnLoadOut.length ? [`In the PDF but not on the Load Out, so no pad from it: ${lo.notOnLoadOut.join(', ')}`] : []),
-  ];
+    h('div', { class: 'card-actions' }, h('button', { class: ok && !old ? 'btn small' : 'btn primary small', onclick: () => doImport(kind) }, old ? 'Import new…' : ok ? 'Replace…' : 'Import…')));
 
   return h('div', {},
     h('div', { class: 'grid imports' },
@@ -331,13 +319,7 @@ function importCards() {
           ? h('span', { style: 'color:var(--red)' }, `${S.run.sheetCount} sheets · ${S.run.checkFailures.length} failed the number check (${S.run.checkFailures.join(', ')})`)
           : h('span', {}, `${S.run.sheetCount} route sheets · `, h('span', { style: 'color:var(--green)' }, 'every sheet\'s numbers add up'))), pdf && pdf.warnings, 'pdf'),
       card('Routes File', !!rf, rf && `${rf.fileName} · ${fmtDateTime(rf.importedAt)}`,
-        rf && `${S.distribution.routes.filter((r) => r.onRoutesFile).length} routes${multi ? ` · ${multi} with more than one Transporter ID` : ''}`, rf && rf.warnings, 'routes'),
-      card('Load Out PDF', !!lo, lo && `${lo.fileName} · ${fmtDateTime(lo.importedAt)}`,
-        lo
-          ? `${lo.dateLabel ? `${lo.dateLabel} · ` : ''}${lo.routes} routes · pads set for ${lo.pads}${lo.skipped ? ` · ${lo.skipped} without a route (backup, lead…)` : ''}`
-          : 'Optional. Fills in the pad for every route, so you don\'t type them.',
-        loadOutWarnings, 'loadout', false,
-        { optional: true, extra: lo ? h('button', { class: 'link', onclick: async () => { const x = await call('clearLoadOut'); if (x.ok) toast('Load Out removed. Pads go back to what you typed.', 'ok'); } }, 'Remove') : null })),
+        rf && `${S.distribution.routes.filter((r) => r.onRoutesFile).length} routes${multi ? ` · ${multi} with more than one Transporter ID` : ''}`, rf && rf.warnings, 'routes')),
     h('p', { class: 'faint', style: 'margin:8px 2px 0;font-size:12.5px' }, 'Tip: drag and drop the files onto this window.'));
 }
 
@@ -361,11 +343,6 @@ const IMPORT_HELP = {
     { text: ['Go to ', { text: 'Slack', href: 'https://slack.com/' }, '.'] },
     { text: 'Navigate to your "escalations" chatroom and download the PDF for your Route Sheets.', img: 'slack-download-pdf.png' },
   ],
-  loadout: [
-    { text: 'Download today\'s Load Out sheet as a PDF. Its name starts with "Load Out - " and the day, for example "Load Out - Saturday, October 10 2026.pdf".' },
-    { text: 'Import it here, or drag it onto the window together with the other files. Each route gets the pad printed next to it on the Load Out.' },
-    { text: 'No Load Out today? Type the pads in "Pad for each wave" instead.' },
-  ],
 };
 
 const helpButton = (kind, title) => h('button', { class: 'help-btn', type: 'button', title: `Where do I get the ${title}?`, 'aria-label': `Where do I get the ${title}?`, onclick: () => showImportHelp(kind, title) }, '?');
@@ -385,22 +362,6 @@ function showImportHelp(kind, title) {
 async function doImport(kind) {
   const r = await call('import', kind);
   if (r.ok && r.result) toast(r.result.message, 'ok', r.result.warnings || []);
-}
-
-const PAD_SOURCE = { typed: 'typed for this route', loadout: 'from the Load Out', wave: 'from its wave' };
-
-/** The pad box on a route's detail page: shows the pad and where it came from, and lets you type one for this route only. */
-function padOverrideControl(r) {
-  const s = r.sheet;
-  const typed = (S.run.typedPads || {})[r.routeCode] || '';
-  const input = h('input', {
-    class: 'input pad-input', value: typed, placeholder: s.pad && s.padSource !== 'typed' ? s.pad : '?', maxLength: 10, autocomplete: 'off',
-    'aria-label': `Pad for ${r.routeCode}`, title: 'Type a pad for this route only. Leave it blank to use the Load Out or wave pad.',
-    onchange: (e) => call('setRoutePad', r.routeCode, e.target.value),
-  });
-  const from = s.padSource ? PAD_SOURCE[s.padSource] : 'no pad yet';
-  const hint = s.padSource === 'typed' ? 'clear the box to go back to the Load Out or wave pad' : s.pad ? 'type here to change it for this route only' : 'type one here, or set it on Distribute';
-  return h('div', { class: 'pad-override' }, input, h('span', { class: 'faint', style: 'font-size:12px;text-align:left' }, `${from} · ${hint}`));
 }
 
 function routeMeta(r) {
@@ -486,8 +447,7 @@ function allRoutesTable() {
     h('tbody', {}, routes.map((r) => h('tr', { class: r.hasSheet ? 'clickable' : '', onclick: () => jumpTo(r.routeCode) },
       h('td', {}, h('b', {}, r.routeCode)),
       h('td', {}, r.sheet ? r.sheet.staging : '—'),
-      h('td', { style: 'white-space:nowrap' }, r.sheet ? r.sheet.waveTime : '—', r.sheet && r.sheet.pad ? h('div', { class: 'pad-tag', title: PAD_SOURCE[r.sheet.padSource] || '' }, `Pad ${r.sheet.pad}`) : null,
-        r.sheet && r.sheet.pad && r.sheet.padSource ? h('div', { class: 'faint', style: 'font-size:11px' }, PAD_SOURCE[r.sheet.padSource]) : null),
+      h('td', { style: 'white-space:nowrap' }, r.sheet ? r.sheet.waveTime : '—', r.sheet && r.sheet.pad ? h('div', { class: 'pad-tag' }, `Pad ${r.sheet.pad}`) : null),
       h('td', { class: 'num' }, r.sheet ? r.sheet.bagCount : '—'),
       h('td', { class: 'num' }, r.sheet ? r.sheet.totalPackages : '—'),
       h('td', {}, r.listed.length ? r.listed.map((c) => h('div', {}, c.rosterName || c.routesName, ' ', h('span', { class: 'mono faint' }, c.transporterId))) : h('span', { class: 'faint' }, 'Not on routes file')),
@@ -593,7 +553,7 @@ function sheetDetail(r) {
     h('div', { class: 'panel facts' },
       h('div', { class: 'question' }, 'Route sheet'),
       fact('Route', r.routeCode), fact('Staging', s.staging), fact('Wave', s.waveTime),
-      fact('Pad #', padOverrideControl(r)), fact('Date', s.dateLabel),
+      fact('Pad #', s.pad || (s.waveTime ? h('button', { class: 'link', onclick: () => go('distribute') }, 'Set on Distribute') : null)), fact('Date', s.dateLabel),
       fact('Service type', s.serviceType), fact('Bags', s.bagCount), fact('Overflow packages', s.overflowCount),
       fact('Total packages', s.totalPackages), fact('Commercial packages', s.commercialPackages), fact((s.pageNumbers || []).length > 1 ? 'PDF pages' : 'PDF page', (s.pageNumbers || [s.pageNumber]).join(', ')), check),
     h('div', { class: 'panel facts' },
@@ -697,8 +657,7 @@ const HELP = {
     ['Download today\'s ', { b: 'route sheet PDF' }, ' (from Slack) and ', { b: 'Routes file' }, ' (from Cortex). The ', { b: '?' }, ' on each box shows you where.'],
     ['Open ', { go: 'distribute', text: 'Distribute' }, '. Click ', { b: 'Import…' }, ' on ', { b: 'Route Sheet PDF' }, ' and pick the PDF.'],
     ['Click ', { b: 'Import…' }, ' on ', { b: 'Routes File' }, ' and pick the Routes file. (Or drag both files onto the window at once.)'],
-    ['Have the ', { b: 'Load Out PDF' }, '? Import it on its box too. Every route gets its pad from it, so there is nothing to type.'],
-    ['No Load Out? In ', { b: 'Pad for each wave' }, ', type the pad number next to each wave time. It goes on every route sheet for that wave. To change one route\'s pad, open it on ', { go: 'sheets', text: 'Route Sheets' }, ' and type it in the Pad # box.'],
+    ['In ', { b: 'Pad for each wave' }, ', type the pad number next to each wave time. It goes on every route sheet for that wave.'],
     ['Look at the colored boxes at the top. Green is good. Yellow and red need you.'],
     ['Go down the page and make a choice for every yellow and red route. See ', { b: 'Making choices' }, ' below.'],
     ['Check ', { b: 'People who won\'t get a route sheet' }, '. Make sure nobody is left out by mistake.'],

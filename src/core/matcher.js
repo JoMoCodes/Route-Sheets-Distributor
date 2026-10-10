@@ -17,15 +17,14 @@ const STATES = {
   NO_SHEET: 'no-sheet', // route is on the routes file but has no PDF page
 };
 
-function summarizeSheet(s, pad = null, padSource = null) {
+function summarizeSheet(s, pad = null) {
   if (!s) return null;
   return {
     pageNumber: s.pageNumber,
     pageNumbers: s.pageNumbers || [s.pageNumber],
     staging: s.staging,
     waveTime: s.waveTime,
-    pad, // the pad for this sheet (typed for the route, from the Load Out, or for its wave), or null
-    padSource, // 'typed' | 'loadout' | 'wave' | null
+    pad, // the pad the user chose for this sheet's wave time, or null
     serviceType: s.serviceType,
     dsp: s.dsp,
     station: s.station,
@@ -51,16 +50,11 @@ const person = (a) => ({ transporterId: a.transporterId, name: a.name, email: a.
  * @param {object[]} input.associates from parseAssociates
  * @param {Object<string,{recipients?:string[],skipped?:boolean}>} input.decisions keyed by route code
  * @param {Object<string,string>} input.wavePads pad number for each wave time, e.g. { '09:50 AM': '3' }
- * @param {{typed?:object,route?:object,wave?:object}} [input.pads] pads by route code typed by hand, by route
- *   code from the Load Out, and by wave time; a typed pad wins, then the Load Out, then the wave.
- * @param {object[]} [input.loadOutRows] rows from the Load Out sheet, compared against each route sheet.
  */
-function distribute({ sheets = [], routes = [], associates = [], decisions = {}, wavePads = {}, pads = null, loadOutRows = [] }) {
+function distribute({ sheets = [], routes = [], associates = [], decisions = {}, wavePads = {} }) {
   const roster = new Map(associates.map((a) => [a.transporterId, a]));
   const sheetByCode = new Map(sheets.map((s) => [s.routeCode, s]));
   const routeByCode = new Map(routes.map((r) => [r.routeCode, r]));
-  const allPads = { typed: {}, route: {}, wave: wavePads || {}, ...(pads || {}) };
-  const loadOutByCode = new Map(loadOutRows.map((r) => [r.routeCode, r]));
 
   // Which routes each Transporter ID is listed on (used to explain and suggest duplicates).
   const routesById = new Map();
@@ -107,21 +101,12 @@ function distribute({ sheets = [], routes = [], associates = [], decisions = {},
       for (const p of sheet.check.problems) issues.push({ level: 'error', text: `Route sheet check failed: ${p}` });
     }
     if (sheet) for (const n of sheet.check.notes || []) issues.push({ level: 'info', text: n });
-    // The Load Out sheet prints the bag count, overflow (OVS) count and staging for each route.
-    // A difference from the route sheet is worth a look, but the route sheet stays the source of truth.
-    const lo = sheet && loadOutByCode.get(routeCode);
-    if (lo) {
-      if (lo.bags !== null && sheet.bagCount !== null && lo.bags !== sheet.bagCount) issues.push({ level: 'warn', text: `Load Out says ${lo.bags} bags but the route sheet says ${sheet.bagCount}` });
-      if (lo.overflow !== null && sheet.overflowCount !== null && lo.overflow !== sheet.overflowCount) issues.push({ level: 'warn', text: `Load Out says ${lo.overflow} overflow packages (OVS) but the route sheet says ${sheet.overflowCount}` });
-      if (lo.staging && sheet.staging && !stagingAgree(lo.staging, sheet.staging)) issues.push({ level: 'warn', text: `Load Out says staging ${lo.staging} but the route sheet says ${sheet.staging}` });
-    }
-    const { pad, padSource } = resolvePad(allPads, routeCode, sheet && sheet.waveTime);
 
     const res = {
       routeCode,
       hasSheet: !!sheet,
       onRoutesFile: !!route,
-      sheet: summarizeSheet(sheet, pad, padSource),
+      sheet: summarizeSheet(sheet, padFor(wavePads, sheet && sheet.waveTime)),
       listed,
       kind: !sheet ? 'no-sheet' : listed.length === 0 ? 'unassigned' : listed.length > 1 ? 'duplicate' : 'single',
       state: null,
@@ -204,53 +189,23 @@ function distribute({ sheets = [], routes = [], associates = [], decisions = {},
 
   results.sort((a, b) => stateOrder(a.state) - stateOrder(b.state) || waveKey(a).localeCompare(waveKey(b)) || a.routeCode.localeCompare(b.routeCode, undefined, { numeric: true }));
 
-  return { routes: results, people: summarizePeople(results, roster), counts: countStates(results), waves: summarizeWaves(sheets, allPads) };
+  return { routes: results, people: summarizePeople(results, roster), counts: countStates(results), waves: summarizeWaves(sheets, wavePads) };
 }
 
 function padFor(wavePads, waveTime) {
   return (waveTime && wavePads && wavePads[waveTime]) || null;
 }
 
-/**
- * The pad for one route and where it came from: typed by hand for that route, else from the
- * Load Out sheet, else the pad typed for its wave time.
- * @returns {{pad:string|null, padSource:'typed'|'loadout'|'wave'|null}}
- */
-function resolvePad(pads, routeCode, waveTime) {
-  const p = { typed: {}, route: {}, wave: {}, ...(pads || {}) };
-  if (routeCode && p.typed[routeCode]) return { pad: p.typed[routeCode], padSource: 'typed' };
-  if (routeCode && p.route[routeCode]) return { pad: p.route[routeCode], padSource: 'loadout' };
-  const wave = padFor(p.wave, waveTime);
-  return wave ? { pad: wave, padSource: 'wave' } : { pad: null, padSource: null };
-}
-
-/** "STG.G09" on the Load Out means the same as "STG.G9.1" on the route sheet. */
-function stagingAgree(loadOutStaging, sheetStaging) {
-  const norm = (v) => String(v || '').toUpperCase().replace(/\s+/g, '').split('.').map((seg) => seg.replace(/^([A-Z]*)0+(\d)/, '$1$2'));
-  if (!String(loadOutStaging || '').trim() || !String(sheetStaging || '').trim()) return true;
-  const a = norm(loadOutStaging);
-  const b = norm(sheetStaging);
-  return a.every((seg, i) => b[i] === seg);
-}
-
-/**
- * Each wave time on the route sheets, earliest first, with how many routes it has, the pad typed for
- * the wave, and how many of its routes got a pad from the Load Out, by hand, or not at all.
- */
-function summarizeWaves(sheets, pads) {
-  const p = { typed: {}, route: {}, wave: {}, ...(pads || {}) };
-  const waves = new Map();
+/** Each wave time on the route sheets, earliest first, with how many routes it has and its pad. */
+function summarizeWaves(sheets, wavePads) {
+  const counts = new Map();
   for (const s of sheets) {
     if (!s.waveTime) continue;
-    if (!waves.has(s.waveTime)) waves.set(s.waveTime, { waveTime: s.waveTime, routes: 0, pad: padFor(p.wave, s.waveTime), fromLoadOut: 0, typed: 0, unpadded: 0 });
-    const w = waves.get(s.waveTime);
-    w.routes++;
-    const { padSource } = resolvePad(p, s.routeCode, s.waveTime);
-    if (padSource === 'loadout') w.fromLoadOut++;
-    else if (padSource === 'typed') w.typed++;
-    else if (!padSource) w.unpadded++;
+    counts.set(s.waveTime, (counts.get(s.waveTime) || 0) + 1);
   }
-  return [...waves.values()].sort((a, b) => waveSortKey(a.waveTime).localeCompare(waveSortKey(b.waveTime)));
+  return [...counts]
+    .map(([waveTime, routes]) => ({ waveTime, routes, pad: padFor(wavePads, waveTime) }))
+    .sort((a, b) => waveSortKey(a.waveTime).localeCompare(waveSortKey(b.waveTime)));
 }
 
 function stateOrder(s) {
@@ -329,4 +284,4 @@ function reasonNotReceiving(r, c) {
   }
 }
 
-module.exports = { distribute, STATES, summarizeSheet, summarizeWaves, waveSortKey, resolvePad, stagingAgree };
+module.exports = { distribute, STATES, summarizeSheet, summarizeWaves, waveSortKey };

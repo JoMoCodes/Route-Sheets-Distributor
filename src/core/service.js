@@ -3,10 +3,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { readPdfPages, parseRouteSheetPages } = require('./pdfParser');
-const { looksLikeLoadOut, parseLoadOutPages } = require('./loadOutParser');
+const { parseRouteSheetPdf } = require('./pdfParser');
 const { readTable, parseAssociates, parseRoutes, parseCsvRows } = require('./tableParsers');
-const { distribute, STATES, resolvePad } = require('./matcher');
+const { distribute, STATES } = require('./matcher');
 const { buildRouteEmail, extractPages, safeFileName } = require('./exporter');
 const { renderEmailHtml, subjectFor, esc } = require('./emailRender');
 const mailer = require('./mailer');
@@ -80,11 +79,11 @@ class Service {
   }
 
   emptyRun() {
-    return { id: DRAFT_ID, station: null, date: null, cycle: null, createdAt: new Date().toISOString(), pdf: null, sheets: [], routesFile: null, routes: [], decisions: {}, sent: {}, wavePads: {}, loadOut: null, routePads: {}, typedPads: {} };
+    return { id: DRAFT_ID, station: null, date: null, cycle: null, createdAt: new Date().toISOString(), pdf: null, sheets: [], routesFile: null, routes: [], decisions: {}, sent: {}, wavePads: {} };
   }
 
   persist() {
-    if (!this.run.pdf && !this.run.routesFile && !this.run.loadOut) return;
+    if (!this.run.pdf && !this.run.routesFile) return;
     this.store.saveRun(this.run);
     this.store.setSettings({ lastRunId: this.run.id });
   }
@@ -95,66 +94,7 @@ class Service {
   }
 
   distribution() {
-    return distribute({ sheets: this.run.sheets, routes: this.run.routes, associates: this.associates(), decisions: this.run.decisions, pads: this.pads(), loadOutRows: this.loadOutRows() });
-  }
-
-  /** Pads read from the Load Out sheet, by route code. Runs saved before it existed have none. */
-  routePads() {
-    return this.run.routePads || {};
-  }
-
-  /** Pads typed by hand for one route, by route code. These win over the Load Out and the wave. */
-  typedPads() {
-    return this.run.typedPads || {};
-  }
-
-  pads() {
-    return { typed: this.typedPads(), route: this.routePads(), wave: this.wavePads() };
-  }
-
-  loadOutRows() {
-    return (this.run.loadOut && this.run.loadOut.rows) || [];
-  }
-
-  /** Types (or, with an empty value, clears) a pad for one route. It overrides the Load Out and the wave pad. */
-  setRoutePad(routeCode, pad) {
-    const code = String(routeCode || '').trim().toUpperCase();
-    if (!this.run.sheets.some((s) => s.routeCode === code)) throw new Error('That route is not in this run.');
-    const value = String(pad ?? '').replace(/\s+/g, ' ').trim().slice(0, 10);
-    const pads = { ...this.typedPads() };
-    if (value) pads[code] = value;
-    else delete pads[code];
-    this.run.typedPads = pads;
-    this.persist();
-    return value || null;
-  }
-
-  /** Forgets the Load Out sheet and the pads it set. Pads typed by hand and wave pads stay. */
-  clearLoadOut() {
-    this.run.loadOut = null;
-    this.run.routePads = {};
-    this.persist();
-  }
-
-  /** What the Distribute page shows about the Load Out: counts, and routes that are on one file but not the other. */
-  loadOutSummary() {
-    const lo = this.run.loadOut;
-    if (!lo) return null;
-    const rows = lo.rows || [];
-    const inPdf = new Set(this.run.sheets.map((s) => s.routeCode));
-    const onLoadOut = new Set(rows.map((r) => r.routeCode));
-    return {
-      fileName: lo.fileName,
-      importedAt: lo.importedAt,
-      date: lo.date,
-      dateLabel: lo.dateLabel,
-      routes: rows.length,
-      pads: Object.keys(this.routePads()).length,
-      skipped: lo.skipped || 0,
-      warnings: lo.warnings || [],
-      notInPdf: inPdf.size ? rows.map((r) => r.routeCode).filter((c) => !inPdf.has(c)) : [],
-      notOnLoadOut: [...inPdf].filter((c) => !onLoadOut.has(c)),
-    };
+    return distribute({ sheets: this.run.sheets, routes: this.run.routes, associates: this.associates(), decisions: this.run.decisions, wavePads: this.wavePads() });
   }
 
   /** Pad number for each wave time in this run, e.g. { '09:50 AM': '3' }. Runs saved before pads existed have none. */
@@ -162,8 +102,8 @@ class Service {
     return this.run.wavePads || {};
   }
 
-  padFor(routeCode, waveTime) {
-    return resolvePad(this.pads(), routeCode, waveTime).pad;
+  padFor(waveTime) {
+    return (waveTime && this.wavePads()[waveTime]) || null;
   }
 
   /** Sets (or, with an empty value, clears) the pad for every route sheet with this wave time. */
@@ -212,9 +152,6 @@ class Service {
         sent: this.run.sent,
         decisions: this.run.decisions,
         wavePads: this.wavePads(),
-        routePads: this.routePads(),
-        typedPads: this.typedPads(),
-        loadOut: this.loadOutSummary(),
       },
       distribution: this.distribution(),
       email: { problem: this.emailProblem(), fromAddress: this.emailConfig().fromAddress, sending: this.sending, unsent: this.unsentRoutes().length },
@@ -248,12 +185,8 @@ class Service {
       return { kind, message: `Imported ${routes.length} routes from ${fileName}.`, warnings };
     }
 
-    if (kind === 'pdf' || kind === 'loadout') {
-      // Both are PDFs, so the file's content decides which one it is.
-      const pages = await readPdfPages(buffer);
-      if (pages.some((p) => looksLikeLoadOut(p.items))) return this.importLoadOut(pages, fileName, importedAt);
-      if (kind === 'loadout') throw new Error(`${fileName} does not look like a Load Out sheet. It should have Driver, PAD and Routes columns.`);
-      const { sheets, pageErrors, pageCount } = parseRouteSheetPages(pages);
+    if (kind === 'pdf') {
+      const { sheets, pageErrors, pageCount } = await parseRouteSheetPdf(buffer);
       if (!sheets.length) throw new Error(`No route sheets were found in ${fileName}.`);
       const dupes = sheets.map((s) => s.routeCode).filter((c, i, a) => a.indexOf(c) !== i);
       const warnings = pageErrors.map((e) => e.message);
@@ -266,17 +199,11 @@ class Service {
         // carrying over a routes file imported into an unsaved draft.
         const existing = this.store.hasRun(id) ? this.store.loadRun(id) : null;
         const draft = this.run.id === DRAFT_ID ? this.run : null;
-        if (draft && (draft.routesFile || draft.loadOut)) this.store.deleteRun(DRAFT_ID);
+        if (draft && draft.routesFile) this.store.deleteRun(DRAFT_ID);
         this.run = existing || { ...this.emptyRun(), id };
         if (draft && draft.routesFile) {
           this.run.routes = draft.routes;
           this.run.routesFile = draft.routesFile;
-        }
-        // A Load Out imported before the PDF comes along too, as long as it is for the same day.
-        if (draft && draft.loadOut && (!draft.loadOut.date || draft.loadOut.date === unique[0].date)) {
-          this.run.loadOut = draft.loadOut;
-          this.run.routePads = draft.routePads || {};
-          this.run.typedPads = { ...(this.run.typedPads || {}), ...(draft.typedPads || {}) };
         }
       }
       Object.assign(this.run, { station: unique[0].station, date: unique[0].date, cycle: unique[0].cycle, dateLabel: unique[0].dateLabel });
@@ -289,24 +216,6 @@ class Service {
       return { kind, message: `Read ${unique.length} route sheets from ${fileName}${failed ? ` — ${failed} did not pass the number check` : ' — all numbers check out'}.`, warnings };
     }
     throw new Error(`Unknown import kind ${kind}`);
-  }
-
-  /** Reads the Load Out sheet and sets the pad for every route it lists. */
-  importLoadOut(pages, fileName, importedAt) {
-    const parsed = parseLoadOutPages(pages.map((p) => p.items));
-    if (!parsed.rows.length) throw new Error(`No drivers with routes were found in ${fileName}.`);
-    if (parsed.date && this.run.date && parsed.date !== this.run.date) {
-      throw new Error(`${fileName} is for ${parsed.dateLabel}, but this run is for ${this.run.dateLabel || this.run.date}. Download the Load Out for the right day.`);
-    }
-    const seen = new Set();
-    const rows = parsed.rows.filter((r) => !seen.has(r.routeCode) && seen.add(r.routeCode));
-    const routePads = {};
-    for (const r of rows) if (r.pad) routePads[r.routeCode] = r.pad;
-    this.run.loadOut = { fileName, importedAt, date: parsed.date, dateLabel: parsed.dateLabel, rows, skipped: parsed.skipped.length, warnings: parsed.warnings };
-    this.run.routePads = routePads;
-    this.persist();
-    const n = Object.keys(routePads).length;
-    return { kind: 'loadout', message: `Read ${rows.length} routes from ${fileName} — pads set for ${n}.`, warnings: parsed.warnings };
   }
 
   /** Drops decisions that no longer make sense after a re-import (e.g. a chosen driver left the route). */
@@ -395,12 +304,10 @@ class Service {
     return this.store.setOutputDir(dir);
   }
 
-  /** The parsed route sheet page, with its pad and where the pad came from (shown on the email). */
+  /** The parsed route sheet page, with the pad chosen for its wave time (shown on the email). */
   sheet(routeCode) {
     const s = this.run.sheets.find((x) => x.routeCode === routeCode);
-    if (!s) return null;
-    const { pad, padSource } = resolvePad(this.pads(), s.routeCode, s.waveTime);
-    return { ...s, pad, padSource };
+    return s ? { ...s, pad: this.padFor(s.waveTime) } : null;
   }
 
   routeResult(routeCode) {

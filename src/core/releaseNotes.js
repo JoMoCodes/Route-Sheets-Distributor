@@ -6,15 +6,11 @@
 
 const RELEASE_NOTES = [
   {
-    version: '1.5.0',
+    version: '1.5.1',
     items: [
-      'New "Load Out PDF" box on the Distribute page. Import the day\'s Load Out sheet and every route gets the pad printed next to it. No more typing pads.',
-      'Pads are now per route, not just per wave. Drivers in the same wave can be on different pads, and the email shows the right one for each route.',
-      'The "Pad for each wave" box still works. It fills in any route the Load Out did not cover, and it is the fallback when there is no Load Out.',
-      'To change one route\'s pad by hand, open it on the Route Sheets page and type in the Pad # box. A typed pad always wins. Clear the box to go back.',
-      'The app checks the Load Out against the route sheets: it warns when a route is on one file but not the other, or when the bags, overflow (OVS) or staging don\'t match. The route sheet is always the one that counts.',
-      'A Load Out for the wrong day is refused with a plain message. "Remove" on its box takes its pads away again; typed and wave pads stay.',
-      'If a page could not be read and you send it anyway, the email now tells the driver to use the attached PDF page instead of showing an empty bag list.',
+      'The "Load Out PDF" box from version 1.5.0 has been removed, along with the per-route pad box. It was added by mistake.',
+      'Pads work the way they did before: type one pad per wave time in "Pad for each wave" on the Distribute page.',
+      'If a page could not be read and you send it anyway, the email tells the driver to use the attached PDF page instead of showing an empty bag list.',
     ],
   },
   {
