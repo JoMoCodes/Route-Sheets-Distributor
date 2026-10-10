@@ -107,6 +107,7 @@ function registerIpc() {
       associates: [{ name: 'Associate Data', extensions: ['csv'] }],
       routes: [{ name: 'Routes export', extensions: ['xlsx', 'csv'] }],
       pdf: [{ name: 'Route sheet PDF', extensions: ['pdf'] }],
+      loadout: [{ name: 'Load Out PDF', extensions: ['pdf'] }],
     }[kind];
     const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters });
     if (r.canceled || !r.filePaths[0]) return null;
@@ -125,6 +126,8 @@ function registerIpc() {
   handle('setDecision', (routeCode, decision) => service.setDecision(routeCode, decision));
   handle('acceptSuggestions', () => service.acceptSuggestions());
   handle('setWavePad', (waveTime, pad) => service.setWavePad(waveTime, pad));
+  handle('setRoutePad', (routeCode, pad) => service.setRoutePad(routeCode, pad));
+  handle('clearLoadOut', () => service.clearLoadOut());
   handle('markSent', (routeCode, how) => service.markSent(routeCode, how));
   handle('loadRun', (id) => service.loadRun(id));
   handle('newRun', () => service.newRun());

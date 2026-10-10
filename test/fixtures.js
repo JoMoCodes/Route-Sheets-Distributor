@@ -79,4 +79,33 @@ async function buildRouteSheetPdf(sheets = SHEETS) {
   return Buffer.from(await doc.save());
 }
 
-module.exports = { ASSOCIATES_CSV, ROUTES_CSV, SHEETS, buildRouteSheetPdf };
+/** Rows for a Load Out sheet matching SHEETS: driver, vehicle, pad, shift type, route, staging, bags, OVS. */
+const LOAD_OUT_ROWS = [
+  ['Alice Driver', '637281 (LMR)', '1', 'Electric Route', 'CX101', 'STG.A1', '3', '3'],
+  ['Bob Builder', '618915', '2', 'Electric Route', 'CX102', 'STG.A2', '1', '3'],
+  ['Andrew Backup', '', '', 'Backup Driver', '', '', '', ''],
+  ['Carol Smith', '615807', '2', 'Electric Route', 'CX103', 'STG.A03', '1', '3'],
+  ['Dan Old', '619438', '', 'Electric Route', 'CX104', 'STG.A4', '1', '0'],
+  // Bags deliberately disagree with the route sheet (which has 1 bag):
+  ['Zed Unknown', '615845', '1', 'Electric Route', 'CX105', 'STG.A5', '9', '0'],
+];
+
+/** A Load Out sheet PDF laid out like the real one: a title, centred column headings, one row per driver. */
+async function buildLoadOutPdf(rows = LOAD_OUT_ROWS, title = 'Load Out - Thursday, September 24 2026') {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([612, 792]);
+  const text = (str, x, y, size = 7.5) => str && page.drawText(str, { x, y: 792 - y, size, font });
+  text(title, 39, 45, 9.4);
+  text('Page 1 of 1', 537, 44, 7.1);
+  const heads = [['Driver', 91], ['Vehicle', 165], ['PAD', 216], ['Notes', 278], ['Shift Type', 355], ['Routes', 415], ['Staging', 457], ['Bags', 500], ['OVS', 532]];
+  for (const [name, x] of heads) text(name, x, 169);
+  const xs = [60, 165, 221, 350, 416, 450, 505, 536];
+  rows.forEach((r, i) => {
+    const y = 185 + i * 15;
+    r.forEach((cell, c) => text(cell, xs[c], y));
+  });
+  return Buffer.from(await doc.save());
+}
+
+module.exports = { ASSOCIATES_CSV, ROUTES_CSV, SHEETS, LOAD_OUT_ROWS, buildRouteSheetPdf, buildLoadOutPdf };

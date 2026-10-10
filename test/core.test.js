@@ -13,7 +13,8 @@ const { buildEml, extractPages } = require('../src/core/exporter');
 const { renderEmailHtml } = require('../src/core/emailRender');
 const { Store } = require('../src/core/store');
 const { Service, detectKind } = require('../src/core/service');
-const { ASSOCIATES_CSV, ROUTES_CSV, SHEETS, buildRouteSheetPdf } = require('./fixtures');
+const { ASSOCIATES_CSV, ROUTES_CSV, SHEETS, buildRouteSheetPdf, buildLoadOutPdf } = require('./fixtures');
+const { parseLoadOutPages, looksLikeLoadOut } = require('../src/core/loadOutParser');
 
 let pdfBuffer;
 let parsed;
@@ -126,6 +127,143 @@ test('PDF: a long route whose tables spill onto the next page is read as one she
   // The PDF a driver gets carries both pages of the route.
   const both = await PDFDocument.load(await extractPages(buf, s.pageNumbers));
   assert.equal(both.getPageCount(), 2);
+});
+
+test('Load Out: reads each driver row by column, skips rows with no route, and reads the date from the title', () => {
+  // Positions taken from a real Load Out sheet (2026-10-10). Headings are centred over their columns.
+  const w = (s) => s.length * 4;
+  const it = (str, x, y) => ({ str, x, y, width: w(str), size: 7.5 });
+  const items = [
+    it('Load Out - Saturday, October 10 2026', 39, 45), it('Page 1 of 1', 537, 44),
+    it('Driver', 91, 169), it('Vehicle', 165, 169), it('PAD', 216, 169), it('Notes', 278, 169), it('Shift Type', 355, 169), it('Routes', 415, 169), it('Staging', 457, 169), it('Bags', 500, 169), it('OVS', 532, 169),
+    it('Adrian Garza', 60, 185), it('637281 (LMR)', 154, 185), it('1', 221, 185), it('Electric Route', 350, 185), it('CX228', 416, 185), it('STG.H14', 450, 185), it('19', 505, 185), it('33', 536, 185),
+    it('Andrew Vigil', 60, 215), it('Backup Driver', 350, 215),
+    it('Dajohn Spencer', 60, 230), it('619454', 165, 230), it('Recycle ADHOC', 350, 230),
+    it('Dekarious Mcfarland', 60, 245), it('615820', 165, 245), it('1', 221, 245), it('Electric Route', 350, 245), it('CX219', 416, 245), it('STG.G09', 450, 245), it('19', 505, 245), it('41', 536, 245),
+    it('No Pad Person', 60, 260), it('615999', 165, 260), it('Electric Route', 350, 260), it('CX230', 416, 260), it('STG.G01', 450, 260), it('10', 505, 260), it('5', 536, 260),
+  ];
+  assert.equal(looksLikeLoadOut(items), true);
+  assert.equal(looksLikeLoadOut([it('STG.G6.1', 36, 100), it('CX203', 36, 160), it('24', 36, 238), it('bags', 57, 238)]), false, 'a route sheet page is not a Load Out');
+  const r = parseLoadOutPages([items]);
+  assert.equal(r.date, '2026-10-10');
+  assert.equal(r.dateLabel, 'Saturday, October 10, 2026');
+  assert.deepEqual(r.rows.map((x) => [x.routeCode, x.driver, x.vehicle, x.pad, x.staging, x.bags, x.overflow]), [
+    ['CX228', 'Adrian Garza', '637281 (LMR)', '1', 'STG.H14', 19, 33],
+    ['CX219', 'Dekarious Mcfarland', '615820', '1', 'STG.G09', 19, 41],
+    ['CX230', 'No Pad Person', '615999', '', 'STG.G01', 10, 5],
+  ]);
+  assert.deepEqual(r.skipped.map((x) => x.driver), ['Andrew Vigil', 'Dajohn Spencer']);
+  assert.deepEqual(r.warnings, ['No pad is printed on the Load Out for CX230.']);
+});
+
+test('Load Out: staging on it matches the route sheet even with leading zeros and the sheet\'s extra suffix', () => {
+  const { stagingAgree } = require('../src/core/matcher');
+  assert.equal(stagingAgree('STG.G09', 'STG.G9.1'), true);
+  assert.equal(stagingAgree('STG.H14', 'STG.H14.1'), true);
+  assert.equal(stagingAgree('STG.G5', 'STG.G5.1'), true);
+  assert.equal(stagingAgree('STG.G5', 'STG.G6.1'), false);
+  assert.equal(stagingAgree('', 'STG.G6.1'), true);
+});
+
+test('Service: the Load Out fills in a pad per route; typed beats Load Out beats wave; wrong day refused; Remove goes back', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(path.join(dir, 'data'));
+    const sv = new Service(store);
+    fs.writeFileSync(path.join(dir, 'sheets.pdf'), pdfBuffer);
+    fs.writeFileSync(path.join(dir, 'AssociateData.csv'), ASSOCIATES_CSV);
+    fs.writeFileSync(path.join(dir, 'Routes.csv'), ROUTES_CSV);
+    fs.writeFileSync(path.join(dir, 'Load Out - Thursday, September 24 2026.pdf'), await buildLoadOutPdf());
+    fs.writeFileSync(path.join(dir, 'Load Out - Friday, September 25 2026.pdf'), await buildLoadOutPdf(undefined, 'Load Out - Friday, September 25 2026'));
+    await sv.importFile(path.join(dir, 'sheets.pdf'));
+    await sv.importFile(path.join(dir, 'AssociateData.csv'));
+    await sv.importFile(path.join(dir, 'Routes.csv'));
+    sv.setWavePad('09:55 AM', '7');
+
+    // A Load Out for another day is refused; picking a route sheet from the Load Out box is explained.
+    await assert.rejects(sv.importFile(path.join(dir, 'Load Out - Friday, September 25 2026.pdf')), /is for Friday, September 25, 2026, but this run is for/);
+    await assert.rejects(sv.importFile(path.join(dir, 'sheets.pdf'), null, 'loadout'), /does not look like a Load Out sheet/);
+    assert.equal(sv.state().run.loadOut, null);
+
+    // The file's content says what it is, whichever box it came in through.
+    const res = await sv.importFile(path.join(dir, 'Load Out - Thursday, September 24 2026.pdf'), null, 'pdf');
+    assert.equal(res.kind, 'loadout');
+    assert.match(res.message, /Read 5 routes .* pads set for 4/);
+    assert.deepEqual(res.warnings, ['No pad is printed on the Load Out for CX104.']);
+    assert.deepEqual(sv.state().run.routePads, { CX101: '1', CX102: '2', CX103: '2', CX105: '1' });
+    const lo = sv.state().run.loadOut;
+    assert.equal(lo.dateLabel, 'Thursday, September 24, 2026');
+    assert.equal(lo.routes, 5);
+    assert.equal(lo.pads, 4);
+    assert.equal(lo.skipped, 1);
+    assert.deepEqual(lo.notInPdf, []);
+    assert.deepEqual(lo.notOnLoadOut, ['CX106', 'CX107', 'CX108']);
+
+    // Typed for the route > Load Out > wave; each route says where its pad came from.
+    const d = sv.state().distribution;
+    assert.deepEqual([byCode(d, 'CX101').sheet.pad, byCode(d, 'CX101').sheet.padSource], ['1', 'loadout']);
+    assert.deepEqual([byCode(d, 'CX104').sheet.pad, byCode(d, 'CX104').sheet.padSource], ['7', 'wave'], 'no pad on the Load Out, so the wave pad');
+    assert.deepEqual([byCode(d, 'CX106').sheet.pad, byCode(d, 'CX106').sheet.padSource], ['7', 'wave'], 'not on the Load Out, so the wave pad');
+    assert.deepEqual(d.waves.map((w) => [w.waveTime, w.fromLoadOut, w.typed, w.unpadded]), [['09:50 AM', 1, 0, 0], ['09:55 AM', 3, 0, 0]]);
+    assert.equal(sv.setRoutePad('CX101', ' 5 '), '5');
+    assert.throws(() => sv.setRoutePad('CX999', '1'), /not in this run/);
+    assert.deepEqual([sv.sheet('CX101').pad, sv.sheet('CX101').padSource], ['5', 'typed']);
+    assert.match(sv.preview('CX101').subject, /Pad 5$/);
+    assert.match((await sv.emailFor('CX102')).text, /PAD #: 2/);
+    assert.equal(sv.setRoutePad('CX101', ''), null);
+    assert.equal(sv.sheet('CX101').pad, '1');
+
+    // The Load Out's bag / overflow / staging columns are checked against the route sheet.
+    assert.ok(byCode(d, 'CX105').issues.some((i) => i.level === 'warn' && i.text === 'Load Out says 9 bags but the route sheet says 1'));
+    assert.ok(!byCode(d, 'CX101').issues.some((i) => /Load Out says/.test(i.text)), 'matching numbers raise nothing');
+    assert.ok(!byCode(d, 'CX103').issues.some((i) => /staging/.test(i.text)), 'STG.A03 matches STG.A3.1');
+
+    // Saved with the run, and still there after a restart.
+    sv.setRoutePad('CX102', '9');
+    const reopened = new Service(store);
+    reopened.loadRun(sv.run.id);
+    assert.deepEqual(reopened.routePads(), { CX101: '1', CX102: '2', CX103: '2', CX105: '1' });
+    assert.deepEqual(reopened.typedPads(), { CX102: '9' });
+    assert.equal(reopened.sheet('CX102').pad, '9');
+
+    // Remove the Load Out: its pads go, typed and wave pads stay.
+    reopened.clearLoadOut();
+    assert.equal(reopened.state().run.loadOut, null);
+    assert.deepEqual([reopened.sheet('CX101').pad, reopened.sheet('CX101').padSource], [null, null]);
+    assert.deepEqual([reopened.sheet('CX102').pad, reopened.sheet('CX102').padSource], ['9', 'typed']);
+    assert.deepEqual([reopened.sheet('CX103').pad, reopened.sheet('CX103').padSource], ['7', 'wave']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Service: a Load Out imported before the PDF comes along into the day\'s run', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsd-'));
+  try {
+    const store = new Store(path.join(dir, 'data'));
+    const sv = new Service(store);
+    fs.writeFileSync(path.join(dir, 'sheets.pdf'), pdfBuffer);
+    fs.writeFileSync(path.join(dir, 'loadout.pdf'), await buildLoadOutPdf());
+    await sv.importFile(path.join(dir, 'loadout.pdf'));
+    assert.equal(sv.run.id, 'draft');
+    assert.equal(sv.state().run.loadOut.routes, 5);
+    await sv.importFile(path.join(dir, 'sheets.pdf'));
+    assert.notEqual(sv.run.id, 'draft');
+    assert.equal(sv.state().run.loadOut.routes, 5);
+    assert.equal(sv.sheet('CX101').pad, '1');
+    assert.equal(store.hasRun('draft'), false, 'the draft is folded into the run');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('Email: when the page failed its number check, the email tells the driver to use the attached PDF', () => {
+  const { renderEmailText } = require('../src/core/emailRender');
+  const bad = parsed.sheets.find((x) => x.routeCode === 'CX108');
+  assert.equal(bad.check.ok, false);
+  assert.ok(renderEmailHtml(bad, { name: 'Alice Driver' }).includes('<b>Please use the attached PDF.</b>'));
+  assert.match(renderEmailText(bad, { name: 'Alice Driver' }), /PLEASE USE THE ATTACHED PDF/);
+  assert.ok(!renderEmailHtml(parsed.sheets[0], { name: 'Alice Driver' }).includes('attached PDF'), 'a page that read fine has no such note');
 });
 
 test('Associates: parses, collapses double spaces, uppercases IDs, flags duplicates', () => {
@@ -543,8 +681,8 @@ test('Display: defaults, text size steps stop at the ends, unknown values are ig
 test('Distribute: lists each wave time in clock order with its route count and pad', () => {
   const d = distribute({ sheets: parsed.sheets, routes: routes(), associates: associates(), wavePads: { '09:55 AM': '2' } });
   assert.deepEqual(d.waves, [
-    { waveTime: '09:50 AM', routes: 1, pad: null },
-    { waveTime: '09:55 AM', routes: 7, pad: '2' },
+    { waveTime: '09:50 AM', routes: 1, pad: null, fromLoadOut: 0, typed: 0, unpadded: 1 },
+    { waveTime: '09:55 AM', routes: 7, pad: '2', fromLoadOut: 0, typed: 0, unpadded: 0 },
   ]);
   assert.equal(byCode(d, 'CX101').sheet.pad, null);
   assert.equal(byCode(d, 'CX102').sheet.pad, '2');

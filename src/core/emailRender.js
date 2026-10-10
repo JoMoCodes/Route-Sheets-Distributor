@@ -94,6 +94,10 @@ function renderEmailHtml(sheet, recipient) {
           <td style="${cell}text-align:right;">${o.packages}</td>
         </tr>`).join('');
 
+  // When the app could not read the page, the tables below may be empty or partial; the attached PDF page is complete.
+  const unreadHtml = sheet.check && sheet.check.ok === false
+    ? `<p style="margin:14px 6px 0;padding:10px 12px;background:#fde4e2;border:1px solid #e8a09a;border-radius:6px;font-size:14px;color:#9b1c14;"><b>Please use the attached PDF.</b> The bag list on this page could not be read, so the lists below may be missing or incomplete. Your full route sheet is in the attached PDF page.</p>`
+    : '';
   const notes = (sheet.check && sheet.check.notes) || [];
   const notesHtml = notes.length
     ? `<p style="margin:14px 0 0;padding:10px 12px;background:#fff4e5;border:1px solid #f0c27b;border-radius:6px;font-size:13px;color:#6b4200;"><b>Note:</b> ${notes.map(esc).join('<br>')}. Check with dispatch before loading.</p>`
@@ -109,6 +113,7 @@ function renderEmailHtml(sheet, recipient) {
     <tr>${infoBox('Wave', sheet.waveTime)}${infoBox('Date', date, { box: DATE_BOX })}</tr>
   </table>
   <p style="margin:8px 6px 0;font-size:13px;color:#5b6675;">${esc([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '))}</p>
+  ${unreadHtml}
 
   <h2 style="margin:22px 6px 6px;font-size:18px;color:#1b2430;">${sheet.bagCount ?? sheet.bags.length} Bags</h2>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
@@ -140,7 +145,8 @@ function renderEmailText(sheet, recipient) {
   lines.push(`WAVE: ${sheet.waveTime}    DATE: ${date}`);
   if (sheet.pad) lines.push(`PAD #: ${sheet.pad}`);
   lines.push([sheet.station, sheet.cycle, sheet.serviceType].filter(Boolean).join(' · '), '');
-  lines.push(`${sheet.bagCount} BAGS`);
+  if (sheet.check && sheet.check.ok === false) lines.push('PLEASE USE THE ATTACHED PDF. The bag list on this page could not be read, so the lists below may be missing or incomplete.', '');
+  lines.push(`${sheet.bagCount ?? sheet.bags.length} BAGS`);
   const w = Math.max(9, ...sheet.bags.map((b) => b.sortZone.length));
   for (const b of sheet.bags) lines.push(`${String(b.index).padStart(2)}  ${(b.sortZone || '(blank)').padEnd(w)}  ${(b.bag || '(blank)').padEnd(12)} ${String(b.packages).padStart(3)}`);
   lines.push('', `OVERFLOW (${sheet.overflowCount} packages)`);

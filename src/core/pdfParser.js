@@ -282,8 +282,8 @@ function hasRouteCode(items) {
   return items.some((i) => i.size >= 20 && ROUTE_CODE_RE.test(String(i.str).trim()));
 }
 
-/** Parses a route sheet PDF buffer. Returns { sheets, pageErrors, pageCount }. */
-async function parseRouteSheetPdf(buffer) {
+/** Reads every page of a PDF into positioned text items (y measured from the top of the page). */
+async function readPdfPages(buffer) {
   const pdfjs = await loadPdfjs();
   const data = new Uint8Array(buffer.buffer ? buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) : buffer);
   const task = pdfjs.getDocument({
@@ -295,12 +295,8 @@ async function parseRouteSheetPdf(buffer) {
     standardFontDataUrl: standardFontsUrl(),
   });
   const doc = await task.promise;
-  const sheets = [];
-  const pageErrors = [];
-  let pageCount = 0;
+  const pages = [];
   try {
-    pageCount = doc.numPages;
-    const pages = [];
     for (let p = 1; p <= doc.numPages; p++) {
       const page = await doc.getPage(p);
       const viewport = page.getViewport({ scale: 1 });
@@ -316,40 +312,52 @@ async function parseRouteSheetPdf(buffer) {
         }));
       pages.push({ pageNumber: p, items, width: viewport.width, height: viewport.height });
     }
-    let i = 0;
-    while (i < pages.length) {
-      const pg = pages[i];
-      if (!pg.items.length) {
-        pageErrors.push({ pageNumber: pg.pageNumber, message: `Page ${pg.pageNumber} is blank and was skipped.` });
-        i++;
-        continue;
-      }
-      if (!hasRouteCode(pg.items)) {
-        pageErrors.push({ pageNumber: pg.pageNumber, message: `Page ${pg.pageNumber} does not look like a route sheet (no route code found).` });
-        i++;
-        continue;
-      }
-      // A long route spills onto the next page(s), which carry the rest of its tables but no
-      // route code of their own. Stack those pages under this one and read them as one sheet.
-      const pageNumbers = [pg.pageNumber];
-      const items = [...pg.items];
-      let offset = pg.height;
-      let j = i + 1;
-      while (j < pages.length && pages[j].items.length && !hasRouteCode(pages[j].items)) {
-        for (const it of pages[j].items) items.push({ ...it, y: it.y + offset });
-        offset += pages[j].height;
-        pageNumbers.push(pages[j].pageNumber);
-        j++;
-      }
-      const sheet = parsePageItems(items, pg.width, pg.pageNumber);
-      sheet.pageNumbers = pageNumbers;
-      sheets.push(sheet);
-      i = j;
-    }
   } finally {
     await task.destroy();
   }
-  return { sheets, pageErrors, pageCount };
+  return pages;
 }
 
-module.exports = { parseRouteSheetPdf, parsePageItems, verifySheet, groupLines, findColumns, readRow };
+/** Parses pages from readPdfPages as route sheets. Returns { sheets, pageErrors, pageCount }. */
+function parseRouteSheetPages(pages) {
+  const sheets = [];
+  const pageErrors = [];
+  let i = 0;
+  while (i < pages.length) {
+    const pg = pages[i];
+    if (!pg.items.length) {
+      pageErrors.push({ pageNumber: pg.pageNumber, message: `Page ${pg.pageNumber} is blank and was skipped.` });
+      i++;
+      continue;
+    }
+    if (!hasRouteCode(pg.items)) {
+      pageErrors.push({ pageNumber: pg.pageNumber, message: `Page ${pg.pageNumber} does not look like a route sheet (no route code found).` });
+      i++;
+      continue;
+    }
+    // A long route spills onto the next page(s), which carry the rest of its tables but no
+    // route code of their own. Stack those pages under this one and read them as one sheet.
+    const pageNumbers = [pg.pageNumber];
+    const items = [...pg.items];
+    let offset = pg.height;
+    let j = i + 1;
+    while (j < pages.length && pages[j].items.length && !hasRouteCode(pages[j].items)) {
+      for (const it of pages[j].items) items.push({ ...it, y: it.y + offset });
+      offset += pages[j].height;
+      pageNumbers.push(pages[j].pageNumber);
+      j++;
+    }
+    const sheet = parsePageItems(items, pg.width, pg.pageNumber);
+    sheet.pageNumbers = pageNumbers;
+    sheets.push(sheet);
+    i = j;
+  }
+  return { sheets, pageErrors, pageCount: pages.length };
+}
+
+/** Parses a route sheet PDF buffer. Returns { sheets, pageErrors, pageCount }. */
+async function parseRouteSheetPdf(buffer) {
+  return parseRouteSheetPages(await readPdfPages(buffer));
+}
+
+module.exports = { parseRouteSheetPdf, parseRouteSheetPages, readPdfPages, parsePageItems, verifySheet, groupLines, findColumns, readRow };

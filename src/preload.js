@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('api', {
   setDecision: call('setDecision'),
   acceptSuggestions: call('acceptSuggestions'),
   setWavePad: call('setWavePad'),
+  setRoutePad: call('setRoutePad'),
+  clearLoadOut: call('clearLoadOut'),
   markSent: call('markSent'),
   loadRun: call('loadRun'),
   newRun: call('newRun'),
