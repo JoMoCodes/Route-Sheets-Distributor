@@ -15,6 +15,36 @@ permissions:
   contents: write
 
 jobs:
+  session-links:
+    name: No session links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Fails if a commit message or the pull request text contains a private Claude Code
+      # session link. Those links were once added automatically and had to be scrubbed.
+      - name: Check for Claude session links
+        shell: bash
+        env:
+          PR_TEXT: |
+            ${{ github.event.pull_request.title }}
+            ${{ github.event.pull_request.body }}
+        run: |
+          pattern="claude.ai/code/session|Claude-Session:"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            messages=$(git log --format=%B "origin/${GITHUB_BASE_REF}..HEAD")
+          else
+            messages=$(git log -n 50 --format=%B)
+          fi
+          if printf "%s
+%s" "$messages" "$PR_TEXT" | grep -Eq "$pattern"; then
+            echo "::error::A commit message or the pull request text contains a Claude session link. Remove it (see CLAUDE.md)."
+            exit 1
+          fi
+          echo "No Claude session links found."
+
   build:
     runs-on: windows-latest
     steps:
