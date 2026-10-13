@@ -32,14 +32,13 @@ jobs:
             ${{ github.event.pull_request.title }}
             ${{ github.event.pull_request.body }}
         run: |
-          pattern="claude.ai/code/session|Claude-Session:"
+          pattern="claude\.ai/code/session|Claude-Session:"
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
             messages=$(git log --format=%B "origin/${GITHUB_BASE_REF}..HEAD")
           else
             messages=$(git log -n 50 --format=%B)
           fi
-          if printf "%s
-%s" "$messages" "$PR_TEXT" | grep -Eq "$pattern"; then
+          if printf "%s\n%s" "$messages" "$PR_TEXT" | grep -Eq "$pattern"; then
             echo "::error::A commit message or the pull request text contains a Claude session link. Remove it (see CLAUDE.md)."
             exit 1
           fi
