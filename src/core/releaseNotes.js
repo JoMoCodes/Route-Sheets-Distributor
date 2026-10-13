@@ -6,6 +6,12 @@
 
 const RELEASE_NOTES = [
   {
+    version: '1.6.0',
+    items: [
+      'Route Sheet Distributor has moved into Loadout Builder. Everything this app does is now on the Route Sheets page there, using the driver list and the Routes file Loadout Builder already has. Install Loadout Builder from https://github.com/JoMoCodes/Loadout-Builder/releases/latest, put your Gmail app password in its Settings under Email, and then you can uninstall this app. Nothing here is changing any more.',
+    ],
+  },
+  {
     version: '1.5.2',
     items: [
       "When the app finds a route's page but can't read the tables on it, the message on the Distribute page now says exactly that, and tells you to check the original page and send it so the driver uses the attached PDF. It used to say \"numbers did not add up\".",

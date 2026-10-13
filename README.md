@@ -1,5 +1,7 @@
 # Route Sheet Distributor
 
+> **This app has moved into [Loadout Builder](https://github.com/JoMoCodes/Loadout-Builder/releases/latest).** Its Route Sheets page does everything this app did, with the driver list and Routes file you already bring in there. Install Loadout Builder, put your Gmail app password in its Settings under Email, and uninstall this app. Nothing here is changing any more.
+
 **What it does, in one sentence:** you give it today's route sheet PDF, and it works out which driver each page belongs to, then turns each page into a neat email the driver can read on their phone.
 
 **Why you can trust it:** it only matches a page to a driver when the Transporter ID matches *exactly*. If something doesn't line up, it never guesses. It stops, tells you what's wrong in plain words, and lets you decide.
